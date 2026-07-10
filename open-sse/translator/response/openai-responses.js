@@ -9,6 +9,7 @@ import { buildUsage } from "../concerns/usage.js";
 import { fallbackToolCallId } from "../concerns/toolCall.js";
 import { reasoningDelta, extractReasoningText } from "../concerns/reasoning.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, OPENAI_FINISH, MODEL_FALLBACK } from "../schema/index.js";
+import { removeNullOptionalToolFields } from "../concerns/optionalToolFields.js";
 
 /**
  * Translate OpenAI chunk to Responses API events
@@ -429,6 +430,8 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
   if (eventType === "response.output_item.added" && (data.item?.type === RESPONSES_ITEM.FUNCTION_CALL || data.item?.type === "custom_tool_call")) {
     const item = data.item;
     state.currentToolCallId = item.call_id || fallbackToolCallId();
+    state.currentToolCallName = item.name || "";
+    state.currentToolCallArgs = "";
 
     return buildChunk(
       { id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK },
@@ -443,21 +446,27 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     );
   }
 
-  // Function call arguments delta (standard or custom_tool_call variant)
+  // Codex strictifies function schemas, so optional fields arrive as null placeholders.
+  // Buffer until done so those placeholders can be removed before the client validates them.
   if (eventType === "response.function_call_arguments.delta" || eventType === "response.custom_tool_call_input.delta") {
-    const argsDelta = data.delta || "";
-    if (!argsDelta) return null;
-
-    return buildChunk(
-      { id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK },
-      { tool_calls: [{ index: state.toolCallIndex, function: { arguments: argsDelta } }] }
-    );
+    state.currentToolCallArgs = (state.currentToolCallArgs || "") + (data.delta || "");
+    return null;
   }
 
   // Function call done (standard or custom_tool_call variant)
   if (eventType === "response.output_item.done" && (data.item?.type === RESPONSES_ITEM.FUNCTION_CALL || data.item?.type === "custom_tool_call")) {
+    const args = removeNullOptionalToolFields(
+      state.currentToolCallName,
+      state.currentToolCallArgs || data.item?.arguments || "{}",
+      state.optionalToolFields,
+    );
+    const chunk = buildChunk(
+      { id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK },
+      { tool_calls: [{ index: state.toolCallIndex, function: { arguments: args } }] },
+    );
     state.toolCallIndex++;
-    return null;
+    state.currentToolCallArgs = "";
+    return chunk;
   }
 
   // Response completed
