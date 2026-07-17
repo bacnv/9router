@@ -228,7 +228,12 @@ export class DefaultExecutor extends BaseExecutor {
       cline: () => this.refreshCline(credentials.refreshToken, proxyOptions),
       clinepass: () => this.refreshCline(credentials.refreshToken, proxyOptions),
       "kimi-coding": () => this.refreshKimiCoding(credentials.refreshToken, proxyOptions),
-      kilocode: () => this.refreshKilocode(credentials.refreshToken, proxyOptions)
+      kilocode: () => this.refreshKilocode(credentials.refreshToken, proxyOptions),
+      xai: () => this.refreshWithForm(PROVIDERS.xai.refreshUrl, {
+        grant_type: "refresh_token",
+        refresh_token: credentials.refreshToken,
+        client_id: PROVIDERS.xai.clientId,
+      }, proxyOptions),
     };
 
     const refresher = refreshers[this.provider];

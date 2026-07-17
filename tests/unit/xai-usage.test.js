@@ -107,7 +107,52 @@ describe("xai OAuth usage", () => {
     const usage = await getUsageForProvider({ provider: "xai", accessToken: "expired" });
     expect(usage.message).toMatch(/expired|re-authorize/i);
   });
+});
 
+describe("xai OAuth refresh", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("refreshes through proxyAwareFetch and preserves an unrotated refresh token", async () => {
+    proxyAwareFetch.mockResolvedValueOnce(jsonResponse({
+      access_token: "new-access-token",
+      expires_in: 3600,
+    }));
+    const proxyOptions = {
+      connectionProxyEnabled: true,
+      connectionProxyUrl: "http://proxy.local",
+      strictProxy: false,
+    };
+
+    const { DefaultExecutor } = await import("../../open-sse/executors/default.js");
+    const result = await new DefaultExecutor("xai").refreshCredentials(
+      { refreshToken: "old-refresh-token" },
+      null,
+      proxyOptions,
+    );
+
+    expect(result).toEqual({
+      accessToken: "new-access-token",
+      refreshToken: "old-refresh-token",
+      expiresIn: 3600,
+    });
+    expect(proxyAwareFetch).toHaveBeenCalledWith(
+      "https://auth.x.ai/oauth2/token",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.any(URLSearchParams),
+      }),
+      proxyOptions,
+    );
+    const body = proxyAwareFetch.mock.calls[0][1].body;
+    expect(Object.fromEntries(body)).toEqual({
+      grant_type: "refresh_token",
+      refresh_token: "old-refresh-token",
+      client_id: "b1a00492-073a-47ea-816f-4c329264a828",
+    });
+  });
+});
+
+describe("xai OAuth usage extended", () => {
   it("returns a billing error when both billing endpoints fail without auth errors", async () => {
     proxyAwareFetch
       .mockResolvedValueOnce(jsonResponse({ error: "bad gateway" }, 502))
