@@ -350,7 +350,7 @@ export function parseGrokCliBilling(
 async function readJson(response) {
   if (!response?.ok) return null;
   const body = await response.json().catch(() => null);
-  return body && typeof body === "object" ? body : null;
+  return body && typeof body === "object" && !Array.isArray(body) ? body : null;
 }
 
 async function getGrokUsage({
@@ -386,19 +386,35 @@ async function getGrokUsage({
     const monthlyResponse = monthlyResult.status === "fulfilled" ? monthlyResult.value : null;
     const userResponse = userResult.status === "fulfilled" ? userResult.value : null;
     const billingResponses = [creditsResponse, monthlyResponse].filter(Boolean);
-    const successfulBilling = billingResponses.filter((response) => response.ok);
 
-    if (successfulBilling.length === 0) {
-      if (billingResponses.some((response) => response.status === 401 || response.status === 403)) {
-        return { message: `${providerName} authentication expired. Please re-authorize.` };
-      }
-      const statuses = billingResponses.map((response) => response.status).join(", ") || "network";
-      return { message: `${providerName} billing API error (${statuses})` };
-    }
-
+    // Only parseable object bodies count as successful independent billing sources.
     const credits = await readJson(creditsResponse);
     const monthly = await readJson(monthlyResponse);
     const user = await readJson(userResponse);
+    const hasParsedBilling = !!(credits || monthly);
+
+    if (!hasParsedBilling) {
+      if (billingResponses.some((response) => response.status === 401 || response.status === 403)) {
+        return { message: `${providerName} authentication expired. Please re-authorize.` };
+      }
+      // 200 with unparseable body must not fall through to subscription/empty-quota messages.
+      if (billingResponses.some((response) => response.ok)) {
+        return { message: `${providerName} billing response was not JSON.` };
+      }
+      if (billingResponses.length === 0) {
+        return { message: `${providerName} billing API error (network)` };
+      }
+      // Preserve upstream error body when a single billing response fails (Grok CLI path).
+      if (billingResponses.length === 1) {
+        const failed = billingResponses[0];
+        const errText = await failed.text().catch(() => "");
+        const trimmed = errText ? `: ${errText.slice(0, 200)}` : "";
+        return { message: `${providerName} billing API error (${failed.status})${trimmed}` };
+      }
+      const statuses = billingResponses.map((response) => response.status).join(", ");
+      return { message: `${providerName} billing API error (${statuses})` };
+    }
+
     const parsed = parseGrokCliBilling(
       credits,
       user,
@@ -407,11 +423,14 @@ async function getGrokUsage({
     );
 
     if (Object.keys(parsed.quotas).length === 0) {
+      const emptyMessage = parsed.subscriptionAccess
+        ? "Subscription access is active; Grok does not expose a numeric included quota."
+        : provider === "xai"
+          ? `${providerName} connected, but no credit allotment was returned.`
+          : "Grok Build connected, but no credit allotment was returned. Free promo may be exhausted.";
       return {
         plan: parsed.plan,
-        message: parsed.subscriptionAccess
-          ? "Subscription access is active; Grok does not expose a numeric included quota."
-          : `${providerName} connected, but no credit allotment was returned.`,
+        message: emptyMessage,
         quotas: {},
       };
     }

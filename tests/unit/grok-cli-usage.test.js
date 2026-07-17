@@ -301,6 +301,59 @@ describe("getUsageForProvider(grok-cli)", () => {
     expect(usage.message).toMatch(/active.*numeric included quota/i);
     expect(usage.quotas).toEqual({});
   });
+
+  it("does not treat 200 invalid JSON as successful billing", async () => {
+    proxyAwareFetch
+      .mockResolvedValueOnce(new Response("not-json", {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        ...USER_PROFILE,
+        subscriptionTier: "XPremiumPlus",
+      }));
+
+    const usage = await getUsageForProvider({
+      provider: "grok-cli",
+      accessToken: "test-token",
+    });
+
+    expect(usage.message).toMatch(/billing response was not JSON/i);
+    expect(usage.message).not.toMatch(/active.*numeric included quota/i);
+    expect(usage.quotas).toBeUndefined();
+  });
+
+  it("includes non-ok billing error body text", async () => {
+    proxyAwareFetch
+      .mockResolvedValueOnce(new Response("upstream overloaded", {
+        status: 502,
+        headers: { "Content-Type": "text/plain" },
+      }))
+      .mockResolvedValueOnce(jsonResponse(USER_PROFILE));
+
+    const usage = await getUsageForProvider({
+      provider: "grok-cli",
+      accessToken: "test-token",
+    });
+
+    expect(usage.message).toMatch(/billing API error \(502\): upstream overloaded/i);
+  });
+
+  it("keeps free/promo empty-allotment wording", async () => {
+    proxyAwareFetch
+      .mockResolvedValueOnce(jsonResponse({ config: {} }))
+      .mockResolvedValueOnce(jsonResponse(USER_PROFILE));
+
+    const usage = await getUsageForProvider({
+      provider: "grok-cli",
+      accessToken: "test-token",
+    });
+
+    expect(usage.message).toBe(
+      "Grok Build connected, but no credit allotment was returned. Free promo may be exhausted.",
+    );
+    expect(usage.quotas).toEqual({});
+  });
 });
 
 describe("parseQuotaData(grok-cli)", () => {

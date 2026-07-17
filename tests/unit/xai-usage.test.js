@@ -117,4 +117,33 @@ describe("xai OAuth usage", () => {
     const usage = await getUsageForProvider({ provider: "xai", accessToken: "token" });
     expect(usage.message).toMatch(/billing API error.*502.*503/i);
   });
+
+  it("uses monthly when credits returns 200 invalid JSON", async () => {
+    proxyAwareFetch
+      .mockResolvedValueOnce(new Response("not-json", {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }))
+      .mockResolvedValueOnce(jsonResponse(MONTHLY))
+      .mockResolvedValueOnce(jsonResponse(USER));
+
+    const usage = await getUsageForProvider({ provider: "xai", accessToken: "token" });
+    expect(usage.message).toBeUndefined();
+    expect(usage.quotas.Monthly).toMatchObject({ used: 874, total: 15000 });
+    expect(usage.quotas.Weekly).toBeUndefined();
+  });
+
+  it("rejects invalid JSON when no billing body is parseable", async () => {
+    proxyAwareFetch
+      .mockResolvedValueOnce(new Response("not-json", {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }))
+      .mockResolvedValueOnce(jsonResponse({ error: "unavailable" }, 503))
+      .mockResolvedValueOnce(jsonResponse(USER));
+
+    const usage = await getUsageForProvider({ provider: "xai", accessToken: "token" });
+    expect(usage.message).toMatch(/billing response was not JSON/i);
+    expect(usage.message).not.toMatch(/active.*numeric included quota/i);
+  });
 });
