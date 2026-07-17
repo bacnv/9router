@@ -51,6 +51,24 @@ const ACTIVE_BILLING = {
   },
 };
 
+const PERCENT_BILLING = {
+  config: {
+    currentPeriod: { end: "2026-07-22T00:00:00Z" },
+    productUsage: [{ product: "Api", usagePercent: 34 }],
+    creditUsagePercent: 34,
+    onDemandCap: { val: 0 },
+    onDemandUsed: { val: 0 },
+  },
+};
+
+const MONTHLY_BILLING = {
+  config: {
+    monthlyLimit: { val: 15000 },
+    used: { val: 874 },
+    billingPeriodEnd: "2026-08-01T00:00:00Z",
+  },
+};
+
 const USER_PROFILE = {
   userId: "d84768dd-224d-4052-ba49-0d336fa9160c",
   email: "user@example.com",
@@ -129,6 +147,66 @@ describe("parseGrokCliBilling", () => {
       remainingPercentage: 72.5,
       resetAt: "2026-08-01T00:00:00.000Z",
     });
+  });
+
+  it("merges xAI percent and monthly payloads when explicitly enabled", () => {
+    const parsed = parseGrokCliBilling(
+      PERCENT_BILLING,
+      { subscriptionTier: "XPremiumPlus", hasGrokCodeAccess: true },
+      MONTHLY_BILLING,
+      { includePercent: true, monthlyLabel: "Monthly" },
+    );
+
+    expect(parsed.quotas.Weekly).toMatchObject({
+      used: 34,
+      total: 100,
+      remainingPercentage: 66,
+      resetAt: "2026-07-22T00:00:00.000Z",
+    });
+    expect(parsed.quotas.Monthly).toMatchObject({
+      used: 874,
+      total: 15000,
+      resetAt: "2026-08-01T00:00:00.000Z",
+    });
+    expect(parsed.quotas["Monthly included"]).toBeUndefined();
+    expect(parsed.exhausted).toBe(false);
+  });
+
+  it("preserves legacy monthly usage fields from either payload", () => {
+    const parsed = parseGrokCliBilling(
+      { config: {} },
+      null,
+      {
+        config: {
+          monthly_limit: { val: 1000 },
+          included_used: { val: 275 },
+        },
+      },
+      { monthlyLabel: "Monthly" },
+    );
+
+    expect(parsed.quotas.Monthly).toMatchObject({
+      used: 275,
+      total: 1000,
+      remainingPercentage: 72.5,
+    });
+  });
+
+  it.each(["expired", "cancelled", "inactive", "unknown-tier"])(
+    "does not treat %s as proof of active subscription",
+    (subscriptionTier) => {
+      const parsed = parseGrokCliBilling(EXHAUSTED_BILLING, { subscriptionTier });
+      expect(parsed.subscriptionAccess).toBe(false);
+    },
+  );
+
+  it("keeps the existing Grok CLI monthly label by default", () => {
+    const parsed = parseGrokCliBilling({
+      monthlyLimit: { val: 1000 },
+      includedUsed: { val: 250 },
+    });
+    expect(parsed.quotas["Monthly included"]).toMatchObject({ used: 250, total: 1000 });
+    expect(parsed.quotas.Monthly).toBeUndefined();
   });
 });
 

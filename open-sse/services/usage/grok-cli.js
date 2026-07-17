@@ -43,6 +43,31 @@ function unwrapVal(value, fallback = 0) {
   return toFiniteNumber(value, fallback);
 }
 
+function billingConfig(billing) {
+  const root = billing && typeof billing === "object" ? billing : {};
+  const config =
+    root.config && typeof root.config === "object" && !Array.isArray(root.config)
+      ? root.config
+      : root;
+  return { root, config };
+}
+
+const ACTIVE_SUBSCRIPTION_TIERS = new Set([
+  "grokpro",
+  "supergrok",
+  "premium",
+  "premiumplus",
+  "xpremium",
+  "xpremiumplus",
+]);
+
+function hasActiveSubscription(user, config) {
+  const normalized = subscriptionTier(user, config)
+    .toLowerCase()
+    .replace(/[_\s-]+/g, "");
+  return ACTIVE_SUBSCRIPTION_TIERS.has(normalized);
+}
+
 function buildGrokCliHeaders(accessToken, providerSpecificData = {}) {
   const psd = providerSpecificData || {};
   const headers = {
@@ -112,12 +137,14 @@ function makeQuota({ used, total, resetAt, unlimited = false }) {
  * Map billing JSON → normalized quotas object for the dashboard.
  * Returns { quotas, periodEnd, exhaustedHint } or empty quotas when nothing usable.
  */
-export function parseGrokCliBilling(billing, user = null) {
-  const root = billing && typeof billing === "object" ? billing : {};
-  const config =
-    root.config && typeof root.config === "object" && !Array.isArray(root.config)
-      ? root.config
-      : root;
+export function parseGrokCliBilling(
+  billing,
+  user = null,
+  monthlyBilling = null,
+  { monthlyLabel = "Monthly included", includePercent = false } = {},
+) {
+  const { root, config } = billingConfig(billing);
+  const { root: monthlyRoot, config: monthlyConfig } = billingConfig(monthlyBilling);
 
   const periodEnd =
     parseResetTime(config.billingPeriodEnd) ||
@@ -128,33 +155,96 @@ export function parseGrokCliBilling(billing, user = null) {
     parseResetTime(root.billing_period_end) ||
     parseResetTime(root.resetAt || root.resetsAt || root.periodEnd) ||
     null;
+  const monthlyPeriodEnd =
+    parseResetTime(monthlyConfig.billingPeriodEnd) ||
+    parseResetTime(monthlyConfig.billing_period_end) ||
+    parseResetTime(monthlyRoot.billingPeriodEnd) ||
+    parseResetTime(monthlyRoot.billing_period_end) ||
+    periodEnd;
 
   const quotas = {};
-  const tier = subscriptionTier(user, config);
-  const subscriptionAccess = Boolean(tier) && !/^(free|none|null)$/i.test(tier);
+  const subscriptionAccess =
+    hasActiveSubscription(user, config) || hasActiveSubscription(user, monthlyConfig);
+
+  // Opt-in percent quota parsing (xAI OAuth usage payload).
+  if (includePercent) {
+    const productUsage = Array.isArray(config.productUsage)
+      ? config.productUsage
+      : Array.isArray(root.productUsage)
+        ? root.productUsage
+        : [];
+    let hasPercent = false;
+
+    for (const item of productUsage) {
+      if (!item || typeof item !== "object") continue;
+      const percent = unwrapVal(item.usagePercent, NaN);
+      if (!Number.isFinite(percent)) continue;
+      const used = Math.min(100, Math.max(0, percent));
+      const rawProduct = String(item.product || "").trim();
+      const label = /^api$/i.test(rawProduct)
+        ? "Weekly"
+        : rawProduct
+          .replace(/[_-]+/g, " ")
+          .replace(/([a-z\d])([A-Z])/g, "$1 $2")
+          .replace(/\b\w/g, (char) => char.toUpperCase()) || "Usage";
+      if (quotas[label]) continue;
+      quotas[label] = makeQuota({ used, total: 100, resetAt: periodEnd });
+      hasPercent = true;
+    }
+
+    const aggregatePercent = unwrapVal(
+      config.creditUsagePercent ?? root.creditUsagePercent,
+      NaN,
+    );
+    if (!hasPercent && Number.isFinite(aggregatePercent)) {
+      quotas.Weekly = makeQuota({
+        used: Math.min(100, Math.max(0, aggregatePercent)),
+        total: 100,
+        resetAt: periodEnd,
+      });
+    }
+  }
 
   // Current Grok Build responses expose included monthly usage at top level.
   const monthlyLimit = unwrapVal(
-    config.monthlyLimit ?? config.monthly_limit ?? root.monthlyLimit ?? root.monthly_limit,
+    monthlyConfig.monthlyLimit ??
+      monthlyConfig.monthly_limit ??
+      monthlyRoot.monthlyLimit ??
+      monthlyRoot.monthly_limit ??
+      config.monthlyLimit ??
+      config.monthly_limit ??
+      root.monthlyLimit ??
+      root.monthly_limit,
     NaN,
   );
-  const includedUsed = unwrapVal(
-    config.includedUsed ?? config.included_used ?? root.includedUsed ?? root.included_used,
-    NaN,
-  );
-  const totalUsed = unwrapVal(
-    config.totalUsed ?? config.total_used ?? root.totalUsed ?? root.total_used,
+  const monthlyUsed = unwrapVal(
+    monthlyConfig.used ??
+      monthlyRoot.used ??
+      monthlyConfig.includedUsed ??
+      monthlyConfig.included_used ??
+      monthlyRoot.includedUsed ??
+      monthlyRoot.included_used ??
+      monthlyConfig.totalUsed ??
+      monthlyConfig.total_used ??
+      monthlyRoot.totalUsed ??
+      monthlyRoot.total_used ??
+      config.used ??
+      root.used ??
+      config.includedUsed ??
+      config.included_used ??
+      root.includedUsed ??
+      root.included_used ??
+      config.totalUsed ??
+      config.total_used ??
+      root.totalUsed ??
+      root.total_used,
     NaN,
   );
   if (Number.isFinite(monthlyLimit) && monthlyLimit > 0) {
-    quotas["Monthly included"] = makeQuota({
-      used: Number.isFinite(includedUsed)
-        ? includedUsed
-        : Number.isFinite(totalUsed)
-          ? totalUsed
-          : 0,
+    quotas[monthlyLabel] = makeQuota({
+      used: Number.isFinite(monthlyUsed) ? monthlyUsed : 0,
       total: monthlyLimit,
-      resetAt: periodEnd,
+      resetAt: monthlyPeriodEnd,
     });
   }
 
@@ -246,13 +336,18 @@ export function parseGrokCliBilling(billing, user = null) {
       (q) => q.unlimited !== true && (q.remainingPercentage ?? 100) <= 0,
     );
 
+  const planConfig =
+    subscriptionTier(null, config) || config.isUnifiedBillingUser === true
+      ? config
+      : monthlyConfig;
+
   return {
-    plan: resolvePlan(user, config),
+    plan: resolvePlan(user, planConfig),
     quotas,
-    periodEnd,
+    periodEnd: monthlyPeriodEnd || periodEnd,
     exhausted,
     subscriptionAccess,
-    rawConfig: config,
+    rawConfig: planConfig,
   };
 }
 
