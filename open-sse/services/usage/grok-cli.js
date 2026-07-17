@@ -30,10 +30,6 @@ import {
   GROK_CLI_VERSION,
 } from "../../config/grokCli.js";
 
-const USAGE = U("grok-cli");
-const BILLING_URL = USAGE.url || "https://cli-chat-proxy.grok.com/v1/billing?format=credits";
-const USER_URL = USAGE.userUrl || "https://cli-chat-proxy.grok.com/v1/user?include=subscription";
-
 /** Unwrap protobuf-json `{ val: n }` or plain numbers/strings. */
 function unwrapVal(value, fallback = 0) {
   if (value == null) return fallback;
@@ -351,73 +347,101 @@ export function parseGrokCliBilling(
   };
 }
 
-/**
- * @param {string} accessToken
- * @param {object|null} providerSpecificData
- * @param {object|null} proxyOptions
- */
-export async function getGrokCliUsage(accessToken, providerSpecificData = null, proxyOptions = null) {
-  if (!accessToken) {
-    return { message: "Grok CLI access token not available." };
-  }
+async function readJson(response) {
+  if (!response?.ok) return null;
+  const body = await response.json().catch(() => null);
+  return body && typeof body === "object" ? body : null;
+}
+
+async function getGrokUsage({
+  provider,
+  accessToken,
+  providerSpecificData,
+  proxyOptions,
+  includeMonthly,
+  includePercent,
+  monthlyLabel,
+}) {
+  const usage = U(provider);
+  const creditsUrl = usage.url;
+  const monthlyUrl = usage.monthlyUrl;
+  const userUrl = usage.userUrl;
+  const providerName = provider === "xai" ? "xAI" : "Grok CLI";
+
+  if (!accessToken) return { message: `${providerName} access token not available.` };
 
   const headers = buildGrokCliHeaders(accessToken, providerSpecificData);
-
   try {
-    // Fetch billing + user profile in parallel (same pattern as official CLI startup)
-    const [billingRes, userRes] = await Promise.all([
-      proxyAwareFetch(
-        BILLING_URL,
-        { method: "GET", headers },
-        proxyOptions,
-      ),
-      proxyAwareFetch(
-        USER_URL,
-        { method: "GET", headers },
-        proxyOptions,
-      ).catch(() => null),
+    const [creditsResult, monthlyResult, userResult] = await Promise.allSettled([
+      proxyAwareFetch(creditsUrl, { method: "GET", headers }, proxyOptions),
+      includeMonthly && monthlyUrl
+        ? proxyAwareFetch(monthlyUrl, { method: "GET", headers }, proxyOptions)
+        : Promise.resolve(null),
+      userUrl
+        ? proxyAwareFetch(userUrl, { method: "GET", headers }, proxyOptions)
+        : Promise.resolve(null),
     ]);
 
-    if (billingRes.status === 401 || billingRes.status === 403) {
-      return { message: "Grok CLI authentication expired. Please re-authorize." };
+    const creditsResponse = creditsResult.status === "fulfilled" ? creditsResult.value : null;
+    const monthlyResponse = monthlyResult.status === "fulfilled" ? monthlyResult.value : null;
+    const userResponse = userResult.status === "fulfilled" ? userResult.value : null;
+    const billingResponses = [creditsResponse, monthlyResponse].filter(Boolean);
+    const successfulBilling = billingResponses.filter((response) => response.ok);
+
+    if (successfulBilling.length === 0) {
+      if (billingResponses.some((response) => response.status === 401 || response.status === 403)) {
+        return { message: `${providerName} authentication expired. Please re-authorize.` };
+      }
+      const statuses = billingResponses.map((response) => response.status).join(", ") || "network";
+      return { message: `${providerName} billing API error (${statuses})` };
     }
 
-    if (!billingRes.ok) {
-      const errText = await billingRes.text().catch(() => "");
-      const trimmed = errText ? `: ${errText.slice(0, 200)}` : "";
-      return { message: `Grok CLI billing API error (${billingRes.status})${trimmed}` };
-    }
+    const credits = await readJson(creditsResponse);
+    const monthly = await readJson(monthlyResponse);
+    const user = await readJson(userResponse);
+    const parsed = parseGrokCliBilling(
+      credits,
+      user,
+      monthly,
+      { includePercent, monthlyLabel },
+    );
 
-    const billing = await billingRes.json().catch(() => null);
-    if (!billing || typeof billing !== "object") {
-      return { message: "Grok CLI billing response was not JSON." };
-    }
-
-    let user = null;
-    if (userRes?.ok) {
-      user = await userRes.json().catch(() => null);
-    }
-
-    const parsed = parseGrokCliBilling(billing, user);
-
-    if (!parsed.quotas || Object.keys(parsed.quotas).length === 0) {
+    if (Object.keys(parsed.quotas).length === 0) {
       return {
         plan: parsed.plan,
         message: parsed.subscriptionAccess
           ? "Subscription access is active; Grok does not expose a numeric included quota."
-          : "Grok Build connected, but no credit allotment was returned. Free promo may be exhausted.",
+          : `${providerName} connected, but no credit allotment was returned.`,
         quotas: {},
       };
     }
 
-    // Dashboard hides QuotaTable whenever `message` is set, so only attach a
-    // message when there are no quota rows to render. Depleted accounts keep
-    // the 0% On-demand bar without a blocking message.
-    return {
-      plan: parsed.plan,
-      quotas: parsed.quotas,
-    };
+    return { plan: parsed.plan, quotas: parsed.quotas };
   } catch (error) {
-    return { message: `Grok CLI usage error: ${error.message}` };
+    return { message: `${providerName} usage error: ${error.message}` };
   }
+}
+
+export function getGrokCliUsage(accessToken, providerSpecificData = null, proxyOptions = null) {
+  return getGrokUsage({
+    provider: "grok-cli",
+    accessToken,
+    providerSpecificData,
+    proxyOptions,
+    includeMonthly: false,
+    includePercent: false,
+    monthlyLabel: "Monthly included",
+  });
+}
+
+export function getXaiUsage(accessToken, providerSpecificData = null, proxyOptions = null) {
+  return getGrokUsage({
+    provider: "xai",
+    accessToken,
+    providerSpecificData,
+    proxyOptions,
+    includeMonthly: true,
+    includePercent: true,
+    monthlyLabel: "Monthly",
+  });
 }

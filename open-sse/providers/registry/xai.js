@@ -25,7 +25,13 @@ export default {
     clientId: "b1a00492-073a-47ea-816f-4c329264a828",
     tokenUrl: "https://auth.x.ai/oauth2/token",
     refreshUrl: "https://auth.x.ai/oauth2/token",
+    usage: {
+      url: "https://cli-chat-proxy.grok.com/v1/billing?format=credits",
+      monthlyUrl: "https://cli-chat-proxy.grok.com/v1/billing",
+      userUrl: "https://cli-chat-proxy.grok.com/v1/user?include=subscription",
+    },
   },
+  features: { usage: true },
   models: [
     { id: "grok-4", name: "Grok 4" },
     { id: "grok-4-fast-reasoning", name: "Grok 4 Fast Reasoning" },
