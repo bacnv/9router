@@ -260,7 +260,20 @@ describe("xai OAuth usage extended", () => {
     });
   });
 
-  it("always emits aggregate Weekly alongside non-API product rows", async () => {
+  it("uses API product Weekly instead of aggregate fallback", async () => {
+    proxyAwareFetch
+      .mockResolvedValueOnce(jsonResponse({ config: {
+        productUsage: [{ product: "Api", usagePercent: 20 }],
+        creditUsagePercent: 40,
+      } }))
+      .mockResolvedValueOnce(jsonResponse(MONTHLY))
+      .mockResolvedValueOnce(jsonResponse(USER));
+
+    const usage = await getUsageForProvider({ provider: "xai", accessToken: "token" });
+    expect(usage.quotas.Weekly).toMatchObject({ used: 20, total: 100 });
+  });
+
+  it("emits aggregate Weekly alongside non-API product rows", async () => {
     proxyAwareFetch
       .mockResolvedValueOnce(jsonResponse({ config: {
         productUsage: [{ product: "Grok", usagePercent: 20 }],
@@ -286,6 +299,89 @@ describe("xai OAuth usage extended", () => {
       total: 1,
       remainingPercentage: 0,
     });
+  });
+
+  it("prefers positive monthly balances over credits zeros and uses monthly reset", async () => {
+    proxyAwareFetch
+      .mockResolvedValueOnce(jsonResponse({ config: {
+        onDemandCap: { val: 0 },
+        onDemandUsed: { val: 0 },
+        prepaidBalance: { val: 0 },
+        credits: { remaining: 0 },
+      } }))
+      .mockResolvedValueOnce(jsonResponse({ config: {
+        billingPeriodEnd: "2026-08-01T00:00:00Z",
+        onDemandCap: { val: 100 },
+        onDemandUsed: { val: 25 },
+        prepaidBalance: { val: 10 },
+        credits: { remaining: 30 },
+      } }))
+      .mockResolvedValueOnce(jsonResponse(USER));
+
+    const usage = await getUsageForProvider({ provider: "xai", accessToken: "token" });
+    expect(usage.quotas["On-demand"]).toMatchObject({
+      used: 25,
+      total: 100,
+      resetAt: "2026-08-01T00:00:00.000Z",
+    });
+    expect(usage.quotas.Prepaid).toMatchObject({
+      total: 10,
+      resetAt: "2026-08-01T00:00:00.000Z",
+    });
+    expect(usage.quotas.Credits).toMatchObject({
+      used: 0,
+      total: 30,
+      resetAt: "2026-08-01T00:00:00.000Z",
+    });
+  });
+
+  it("preserves legitimate all-zero exhaustion across both payloads", async () => {
+    const zero = { config: {
+      onDemandCap: { val: 0 },
+      onDemandUsed: { val: 0 },
+      prepaidBalance: { val: 0 },
+    } };
+    proxyAwareFetch
+      .mockResolvedValueOnce(jsonResponse(zero))
+      .mockResolvedValueOnce(jsonResponse(zero))
+      .mockResolvedValueOnce(jsonResponse({ ...USER, subscriptionTier: null }));
+
+    const usage = await getUsageForProvider({ provider: "xai", accessToken: "token" });
+    expect(usage.quotas["On-demand"]).toMatchObject({ used: 1, total: 1, remainingPercentage: 0 });
+  });
+
+  it("returns monthly usage when the credits body stalls", async () => {
+    vi.useFakeTimers();
+    const stalled = {
+      ok: true,
+      status: 200,
+      json: vi.fn(() => new Promise(() => {})),
+      body: { cancel: vi.fn().mockResolvedValue(undefined) },
+    };
+    proxyAwareFetch
+      .mockResolvedValueOnce(stalled)
+      .mockResolvedValueOnce(jsonResponse(MONTHLY))
+      .mockResolvedValueOnce(jsonResponse(USER));
+
+    const pending = getUsageForProvider({ provider: "xai", accessToken: "token" });
+    await vi.advanceTimersByTimeAsync(10000);
+    const usage = await pending;
+    vi.useRealTimers();
+
+    expect(usage.quotas.Monthly).toMatchObject({ used: 874, total: 15000 });
+    expect(stalled.body.cancel).toHaveBeenCalledOnce();
+  });
+
+  it("cancels a failed user body on an early billing error", async () => {
+    const userFailed = jsonResponse({ error: "unavailable" }, 503);
+    const cancel = vi.spyOn(userFailed.body, "cancel");
+    proxyAwareFetch
+      .mockResolvedValueOnce(jsonResponse({ error: "bad gateway" }, 502))
+      .mockResolvedValueOnce(jsonResponse({ error: "unavailable" }, 503))
+      .mockResolvedValueOnce(userFailed);
+
+    await getUsageForProvider({ provider: "xai", accessToken: "token" });
+    expect(cancel).toHaveBeenCalledOnce();
   });
 
   it("cancels failed response bodies when usable billing exists", async () => {

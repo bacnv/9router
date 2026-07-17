@@ -225,6 +225,20 @@ describe("parseGrokCliBilling", () => {
     expect(parsed.quotas["Monthly included"].used).toBe(300);
   });
 
+  it("preserves Grok CLI remaining-only zero encoding", () => {
+    const parsed = parseGrokCliBilling({ credits: { remaining: 0 } });
+    expect(parsed.quotas.Credits).toMatchObject({
+      used: 0,
+      total: 1,
+      remainingPercentage: 0,
+    });
+  });
+
+  it("omits on-demand when cap exists but usage is absent", () => {
+    const parsed = parseGrokCliBilling({ onDemandCap: { val: 100 } });
+    expect(parsed.quotas["On-demand"]).toBeUndefined();
+  });
+
   it("uses the monthly tier for the plan when present", () => {
     const parsed = parseGrokCliBilling(
       { config: { isUnifiedBillingUser: true } },

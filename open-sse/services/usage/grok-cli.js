@@ -150,7 +150,11 @@ export function parseGrokCliBilling(
   billing,
   user = null,
   monthlyBilling = null,
-  { monthlyLabel = "Monthly included", includePercent = false } = {},
+  {
+    monthlyLabel = "Monthly included",
+    includePercent = false,
+    encodeRemainingOnlyExhausted = false,
+  } = {},
 ) {
   const { root, config } = billingConfig(billing);
   const { root: monthlyRoot, config: monthlyConfig } = billingConfig(monthlyBilling);
@@ -202,7 +206,7 @@ export function parseGrokCliBilling(
       config.creditUsagePercent ?? root.creditUsagePercent,
       NaN,
     );
-    if (Number.isFinite(aggregatePercent)) {
+    if (!quotas.Weekly && Number.isFinite(aggregatePercent)) {
       quotas.Weekly = makeQuota({
         used: Math.min(100, Math.max(0, aggregatePercent)),
         total: 100,
@@ -253,78 +257,90 @@ export function parseGrokCliBilling(
     });
   }
 
-  // Primary: on-demand spending window (subscription / promo credits)
-  const onDemandCap = firstFinite(
-    config.onDemandCap,
-    root.onDemandCap,
-    monthlyConfig.onDemandCap,
-    monthlyRoot.onDemandCap,
-  );
-  const onDemandUsed = firstFinite(
-    config.onDemandUsed,
-    root.onDemandUsed,
-    monthlyConfig.onDemandUsed,
-    monthlyRoot.onDemandUsed,
-  );
-  if (Number.isFinite(onDemandCap) && onDemandCap > 0) {
-    const used = Number.isFinite(onDemandUsed) ? Math.max(0, onDemandUsed) : 0;
+  // Prefer a useful positive source, but preserve a complete all-zero source as
+  // the exhausted free/promo signal. Cap without used is not a usable quota.
+  const onDemandSources = [
+    { source: config, resetAt: periodEnd },
+    { source: root, resetAt: periodEnd },
+    { source: monthlyConfig, resetAt: monthlyPeriodEnd },
+    { source: monthlyRoot, resetAt: monthlyPeriodEnd },
+  ].map(({ source, resetAt }) => ({
+    cap: unwrapVal(source.onDemandCap, NaN),
+    used: unwrapVal(source.onDemandUsed, NaN),
+    resetAt,
+  }));
+  const onDemand =
+    onDemandSources.find(({ cap, used }) => cap > 0 && Number.isFinite(used)) ||
+    onDemandSources.find(({ cap, used }) => cap === 0 && Number.isFinite(used));
+  if (onDemand?.cap > 0) {
     quotas["On-demand"] = makeQuota({
-      used,
-      total: onDemandCap,
-      resetAt: periodEnd,
+      used: Math.max(0, onDemand.used),
+      total: onDemand.cap,
+      resetAt: onDemand.resetAt,
     });
-  } else if (
-    !subscriptionAccess &&
-    Number.isFinite(onDemandCap) &&
-    onDemandCap === 0 &&
-    Number.isFinite(onDemandUsed)
-  ) {
+  } else if (!subscriptionAccess && onDemand?.cap === 0) {
     // Cap 0 is the exhausted free/promo state (chat returns 402 spending-limit).
     // UI treats total===0 as unlimited, so use a synthetic 1/1 depleted row.
     quotas["On-demand"] = {
       used: 1,
       total: 1,
       remainingPercentage: 0,
-      resetAt: periodEnd,
+      resetAt: onDemand.resetAt,
       unlimited: false,
     };
   }
 
-  // Prepaid top-up balance (remaining credits; no fixed allotment known)
-  const prepaid = firstFinite(
-    config.prepaidBalance,
-    root.prepaidBalance,
-    monthlyConfig.prepaidBalance,
-    monthlyRoot.prepaidBalance,
-  );
-  if (Number.isFinite(prepaid) && prepaid > 0) {
-    // Show full bar against the current balance (0 spent of this remaining pot).
+  // Prepaid top-up balance (remaining credits; no fixed allotment known).
+  const prepaidSources = [
+    { value: firstFinite(config.prepaidBalance, root.prepaidBalance), resetAt: periodEnd },
+    { value: firstFinite(monthlyConfig.prepaidBalance, monthlyRoot.prepaidBalance), resetAt: monthlyPeriodEnd },
+  ];
+  const prepaid = prepaidSources.find(({ value }) => value > 0);
+  if (prepaid) {
     quotas["Prepaid"] = {
       used: 0,
-      total: prepaid,
+      total: prepaid.value,
       remainingPercentage: 100,
-      resetAt: null,
+      resetAt: prepaid.resetAt,
       unlimited: false,
     };
   }
 
   // Opportunistic richer credit envelopes (future / other account types)
   const creditBags = [
-    root.credits,
-    root.creditBalance,
-    root.usage,
-    config.credits,
-    config.includedCredits,
-    config.subscriptionCredits,
-    monthlyRoot.credits,
-    monthlyRoot.creditBalance,
-    monthlyRoot.usage,
-    monthlyConfig.credits,
-    monthlyConfig.includedCredits,
-    monthlyConfig.subscriptionCredits,
-  ].filter((bag) => bag && typeof bag === "object" && !Array.isArray(bag));
+    ...[
+      root.credits,
+      root.creditBalance,
+      root.usage,
+      config.credits,
+      config.includedCredits,
+      config.subscriptionCredits,
+    ].map((bag) => ({ bag, resetAt: periodEnd })),
+    ...[
+      monthlyRoot.credits,
+      monthlyRoot.creditBalance,
+      monthlyRoot.usage,
+      monthlyConfig.credits,
+      monthlyConfig.includedCredits,
+      monthlyConfig.subscriptionCredits,
+    ].map((bag) => ({ bag, resetAt: monthlyPeriodEnd })),
+  ]
+    .filter(({ bag }) => bag && typeof bag === "object" && !Array.isArray(bag))
+    .sort((a, b) => {
+      const useful = ({ bag }) => firstFinite(
+        bag.total,
+        bag.limit,
+        bag.cap,
+        bag.allocation,
+        bag.amount,
+        bag.remaining,
+        bag.balance,
+        bag.left,
+      ) > 0;
+      return Number(useful(b)) - Number(useful(a));
+    });
 
-  for (const bag of creditBags) {
+  for (const { bag, resetAt } of creditBags) {
     const total = unwrapVal(
       bag.total ?? bag.limit ?? bag.cap ?? bag.allocation ?? bag.amount,
       NaN,
@@ -341,16 +357,15 @@ export function parseGrokCliBilling(
         quotas.Credits = makeQuota({
           used: resolvedUsed,
           total,
-          resetAt: parseResetTime(bag.resetAt || bag.resetsAt || bag.end) || periodEnd,
+          resetAt: parseResetTime(bag.resetAt || bag.resetsAt || bag.end) || resetAt,
         });
       }
     } else if (Number.isFinite(remaining) && remaining >= 0 && !quotas.Credits) {
       quotas.Credits = {
-        // Generic dashboard parsing derives percent from used/total for xAI.
-        used: remaining > 0 ? 0 : 1,
+        used: remaining > 0 || !encodeRemainingOnlyExhausted ? 0 : 1,
         total: remaining > 0 ? remaining : 1,
         remainingPercentage: remaining > 0 ? 100 : 0,
-        resetAt: periodEnd,
+        resetAt,
         unlimited: false,
       };
     }
@@ -381,7 +396,28 @@ export function parseGrokCliBilling(
 
 async function readJson(response, acceptEmpty = false) {
   if (!response?.ok) return null;
-  const body = await response.json().catch(() => null);
+  const reader = response.body?.getReader?.();
+  let timeoutId;
+  const readBody = reader
+    ? (async () => {
+        const decoder = new TextDecoder();
+        let text = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) return JSON.parse(text + decoder.decode());
+          text += decoder.decode(value, { stream: true });
+        }
+      })()
+    : response.json();
+  const body = await Promise.race([
+    readBody.catch(() => null),
+    new Promise((resolve) => {
+      timeoutId = setTimeout(async () => {
+        await (reader?.cancel?.() || response.body?.cancel?.())?.catch?.(() => {});
+        resolve(null);
+      }, 10000);
+    }),
+  ]).finally(() => clearTimeout(timeoutId));
   return hasUsableBilling(body) || (acceptEmpty && body && typeof body === "object" && !Array.isArray(body))
     ? body
     : null;
@@ -399,6 +435,7 @@ async function getGrokUsage({
   includeMonthly,
   includePercent,
   monthlyLabel,
+  encodeRemainingOnlyExhausted,
 }) {
   const usage = U(provider);
   const creditsUrl = usage.url;
@@ -426,11 +463,11 @@ async function getGrokUsage({
     const billingResponses = [creditsResponse, monthlyResponse].filter(Boolean);
 
     // Only parseable object bodies count as successful independent billing sources.
-    const credits = await readJson(creditsResponse, !includeMonthly);
-    const monthly = await readJson(monthlyResponse);
-    const user = userResponse?.ok
-      ? await userResponse.json().catch(() => null)
-      : null;
+    const [credits, monthly, user] = await Promise.all([
+      readJson(creditsResponse, !includeMonthly),
+      readJson(monthlyResponse),
+      readJson(userResponse, true),
+    ]);
     const hasParsedBilling = !!(credits || monthly);
 
     if (!hasParsedBilling) {
@@ -454,7 +491,7 @@ async function getGrokUsage({
         const trimmed = errText ? `: ${errText.slice(0, 200)}` : "";
         return { message: `${providerName} billing API error (${failed.status})${trimmed}` };
       }
-      await Promise.all(billingResponses.map(consumeFailedResponse));
+      await Promise.all([...billingResponses, userResponse].map(consumeFailedResponse));
       const statuses = billingResponses.map((response) => response.status).join(", ");
       return { message: `${providerName} billing API error (${statuses})` };
     }
@@ -465,7 +502,7 @@ async function getGrokUsage({
       credits,
       user,
       monthly,
-      { includePercent, monthlyLabel },
+      { includePercent, monthlyLabel, encodeRemainingOnlyExhausted },
     );
 
     if (Object.keys(parsed.quotas).length === 0) {
@@ -510,5 +547,6 @@ export function getXaiUsage(accessToken, providerSpecificData = null, proxyOptio
     includeMonthly: true,
     includePercent: true,
     monthlyLabel: "Monthly",
+    encodeRemainingOnlyExhausted: true,
   });
 }
