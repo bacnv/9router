@@ -268,6 +268,7 @@ export class DefaultExecutor extends BaseExecutor {
     }, proxyOptions);
     if (!response.ok) return null;
     const tokens = await response.json();
+    if (typeof tokens?.access_token !== "string" || !tokens.access_token.trim()) return null;
     return { accessToken: tokens.access_token, refreshToken: tokens.refresh_token || params.refresh_token, expiresIn: tokens.expires_in };
   }
 

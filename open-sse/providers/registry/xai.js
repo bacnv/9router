@@ -1,3 +1,5 @@
+import { GROK_CLI_BASE_URL } from "../../config/grokCli.js";
+
 export default {
   id: "xai",
   priority: 280,
@@ -26,9 +28,9 @@ export default {
     tokenUrl: "https://auth.x.ai/oauth2/token",
     refreshUrl: "https://auth.x.ai/oauth2/token",
     usage: {
-      url: "https://cli-chat-proxy.grok.com/v1/billing?format=credits",
-      monthlyUrl: "https://cli-chat-proxy.grok.com/v1/billing",
-      userUrl: "https://cli-chat-proxy.grok.com/v1/user?include=subscription",
+      url: `${GROK_CLI_BASE_URL}/billing?format=credits`,
+      monthlyUrl: `${GROK_CLI_BASE_URL}/billing`,
+      userUrl: `${GROK_CLI_BASE_URL}/user?include=subscription`,
     },
   },
   features: { usage: true },

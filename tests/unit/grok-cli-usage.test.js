@@ -200,13 +200,38 @@ describe("parseGrokCliBilling", () => {
     },
   );
 
-  it("keeps the existing Grok CLI monthly label by default", () => {
+  it("keeps the existing Grok CLI monthly label and usage precedence", () => {
     const parsed = parseGrokCliBilling({
       monthlyLimit: { val: 1000 },
+      used: { val: 900 },
       includedUsed: { val: 250 },
+      totalUsed: { val: 300 },
     });
     expect(parsed.quotas["Monthly included"]).toMatchObject({ used: 250, total: 1000 });
     expect(parsed.quotas.Monthly).toBeUndefined();
+  });
+
+  it("omits monthly quota when usage is absent", () => {
+    const parsed = parseGrokCliBilling({ monthlyLimit: { val: 1000 } });
+    expect(parsed.quotas["Monthly included"]).toBeUndefined();
+  });
+
+  it("falls back from a null protobuf wrapper to another monthly usage field", () => {
+    const parsed = parseGrokCliBilling({
+      monthlyLimit: { val: 1000 },
+      includedUsed: { val: null },
+      totalUsed: { val: 300 },
+    });
+    expect(parsed.quotas["Monthly included"].used).toBe(300);
+  });
+
+  it("uses the monthly tier for the plan when present", () => {
+    const parsed = parseGrokCliBilling(
+      { config: { isUnifiedBillingUser: true } },
+      null,
+      { config: { subscriptionTier: "premium_plus" } },
+    );
+    expect(parsed.plan).toBe("Premium Plus");
   });
 });
 
