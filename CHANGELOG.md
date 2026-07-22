@@ -7,6 +7,7 @@
 - **Dashboard**: ProviderTopology flow animation
 
 ## Fixes
+- **Grok CLI**: identify OAuth inference requests with workspace headers
 - **DB**: resolve better-sqlite3 parameter binding crash
 - **Translator**: pass `service_tier` through OpenAI → Responses conversion
 - **Kiro**: map GPT-5.6 reasoning effort fields

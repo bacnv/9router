@@ -372,6 +372,8 @@ export class GrokCliExecutor extends BaseExecutor {
       this.config.clientIdentifier || headers["x-grok-client-identifier"] || GROK_CLI_CLIENT_IDENTIFIER;
     headers["x-grok-client-version"] =
       this.config.clientVersion || headers["x-grok-client-version"] || GROK_CLI_VERSION;
+    headers["x-xai-token-auth"] = this.config.tokenAuth || "xai-grok-cli";
+    headers["User-Agent"] = `xai-grok-workspace/${this.config.clientVersion || GROK_CLI_VERSION}`;
 
     const sessionId = this._currentSessionId || credentials?.connectionId || crypto.randomUUID();
     const reqId = this._currentReqId || crypto.randomUUID();
