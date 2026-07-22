@@ -230,7 +230,12 @@ export class DefaultExecutor extends BaseExecutor {
       clinepass: () => this.refreshCline(credentials.refreshToken, proxyOptions),
       kimi: () => this.refreshKimi(credentials, proxyOptions),
       "kimi-coding": () => this.refreshKimi(credentials, proxyOptions),
-      kilocode: () => this.refreshKilocode(credentials.refreshToken, proxyOptions)
+      kilocode: () => this.refreshKilocode(credentials.refreshToken, proxyOptions),
+      xai: () => this.refreshWithForm(PROVIDERS.xai.refreshUrl, {
+        grant_type: "refresh_token",
+        refresh_token: credentials.refreshToken,
+        client_id: PROVIDERS.xai.clientId,
+      }, proxyOptions),
     };
 
     const refresher = refreshers[this.provider];
@@ -265,6 +270,7 @@ export class DefaultExecutor extends BaseExecutor {
     }, proxyOptions);
     if (!response.ok) return null;
     const tokens = await response.json();
+    if (typeof tokens?.access_token !== "string" || !tokens.access_token.trim()) return null;
     return { accessToken: tokens.access_token, refreshToken: tokens.refresh_token || params.refresh_token, expiresIn: tokens.expires_in };
   }
 

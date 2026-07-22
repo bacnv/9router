@@ -11,7 +11,7 @@ export { consumeCodexRateLimitResetCredit, getCodexRateLimitResetCredits };
 import { getKiroUsage } from "./usage/kiro.js";
 import { getMiniMaxUsage } from "./usage/minimax.js";
 import { getCodeBuddyCnUsage } from "./usage/codebuddy-cn.js";
-import { getGrokCliUsage } from "./usage/grok-cli.js";
+import { getGrokCliUsage, getXaiUsage } from "./usage/grok-cli.js";
 import {
   getQwenUsage,
   getIflowUsage,
@@ -45,10 +45,14 @@ const USAGE_HANDLERS = {
   "vercel-ai-gateway": (c) => getVercelAiGatewayUsage(c.apiKey, c.proxyOptions),
   "codebuddy-cn": (c) => getCodeBuddyCnUsage(c.accessToken, c.apiKey, c.providerSpecificData, c.proxyOptions),
   "grok-cli": (c) => getGrokCliUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
+  xai: (c) => getXaiUsage(c.accessToken, {
+    ...(c.providerSpecificData || {}),
+    ...(c.email && !c.providerSpecificData?.email ? { email: c.email } : {}),
+  }, c.proxyOptions),
 };
 
 export async function getUsageForProvider(connection, proxyOptions = null) {
-  const { provider, accessToken, apiKey, providerSpecificData, projectId } = connection;
+  const { provider, accessToken, apiKey, email, providerSpecificData, projectId } = connection;
   const providerDataWithProjectId = {
     ...(providerSpecificData || {}),
     ...(projectId ? { projectId } : {}),
@@ -56,5 +60,5 @@ export async function getUsageForProvider(connection, proxyOptions = null) {
 
   const handler = USAGE_HANDLERS[provider];
   if (!handler) return { message: `Usage API not implemented for ${provider}` };
-  return await handler({ provider, accessToken, apiKey, providerSpecificData, providerDataWithProjectId, proxyOptions });
+  return await handler({ provider, accessToken, apiKey, email, providerSpecificData, providerDataWithProjectId, proxyOptions });
 }
