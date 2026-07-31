@@ -1,3 +1,11 @@
+# v0.5.45-xai-oauth-usage (2026-07-31)
+
+## Features
+- **xAI**: restore OAuth quota usage on top of upstream v0.5.45
+
+## Fixes
+- **Codex**: omit null placeholders for originally optional tool arguments
+
 # v0.5.45 (2026-07-30)
 
 ## Features
