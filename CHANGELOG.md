@@ -1,3 +1,8 @@
+# v0.5.50-xai-oauth-usage (2026-08-06)
+
+## Features
+- **xAI**: restore OAuth quota usage on top of upstream v0.5.50
+
 # v0.5.50 (2026-08-05)
 
 ## Features
