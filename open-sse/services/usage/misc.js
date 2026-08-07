@@ -110,10 +110,29 @@ export async function getOllamaUsage(apiKey, providerSpecificData, proxyOptions 
 
     // Ollama `usage` is a 0..1 ratio (1.0 = limit reached). Convert to a 0..100
     // bar. Do NOT set absolute `remaining` — QuotaTable reads remainingPercentage.
-    function ratioQuota(usageRatio, resetAt = null) {
+    function normalizeModels(models) {
+      return (Array.isArray(models) ? models : [])
+        .map((model, index) => ({
+          name: typeof model?.name === "string" ? model.name.trim() : "",
+          requestCount: Number(model?.request_count),
+          index,
+        }))
+        .filter((model) => model.name && Number.isFinite(model.requestCount) && model.requestCount >= 0)
+        .sort((a, b) => b.requestCount - a.requestCount || a.index - b.index)
+        .map(({ name, requestCount }) => ({ name, requestCount }));
+    }
+
+    function ratioQuota(usageRatio, models, resetAt = null) {
       const ratio = Math.max(0, Math.min(1, Number(usageRatio) || 0));
       const usedPct = Math.round(ratio * 100);
-      return { used: usedPct, total: 100, remainingPercentage: 100 - usedPct, resetAt, unlimited: false };
+      return {
+        used: usedPct,
+        total: 100,
+        remainingPercentage: 100 - usedPct,
+        resetAt,
+        unlimited: false,
+        models: normalizeModels(models),
+      };
     }
 
     const monthlyResetAt = planRaw.toLowerCase() === "free" && me?.CreatedAt
@@ -126,7 +145,7 @@ export async function getOllamaUsage(apiKey, providerSpecificData, proxyOptions 
       if (raw === undefined || raw === null) continue;
       const ratio = Number(raw);
       if (Number.isNaN(ratio)) continue;
-      quotas[label] = ratioQuota(ratio, key === "monthly" ? monthlyResetAt : null);
+      quotas[label] = ratioQuota(ratio, limits[key]?.models, key === "monthly" ? monthlyResetAt : null);
     }
 
     if (Object.keys(quotas).length === 0) {
