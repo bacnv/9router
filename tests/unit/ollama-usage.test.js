@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
@@ -142,6 +143,20 @@ describe("getUsageForProvider(ollama)", () => {
 
     expect(usage.message).toMatch(/api key/i);
     expect(proxyAwareFetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("Ollama quota model count UI", () => {
+  it("renders model counts horizontally with wrapping separators", () => {
+    const source = readFileSync(
+      new URL("../../src/app/(dashboard)/dashboard/usage/components/ProviderLimits/QuotaTable.js", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain("quota.models.map");
+    expect(source).toContain("flex-wrap");
+    expect(source).toContain("model.name");
+    expect(source).toContain("model.requestCount");
   });
 });
 
