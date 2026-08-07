@@ -553,6 +553,7 @@ export function parseQuotaData(provider, data) {
               total: quota.total || 0,
               resetAt: quota.resetAt || null,
               remainingPercentage: quota.remainingPercentage,
+              models: Array.isArray(quota.models) ? quota.models : [],
             });
           });
         }
