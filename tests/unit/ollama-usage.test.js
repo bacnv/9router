@@ -33,12 +33,21 @@ const SAMPLE_USAGE = {
     models: [],
   },
   limits: {
-    session: { usage: 0, models: [] },
+    session: {
+      usage: 0,
+      models: [
+        { name: "gemma4:31b", request_count: 1 },
+        { name: "minimax-m3", request_count: 2 },
+        { name: " ", request_count: 99 },
+        { name: "invalid-negative", request_count: -1 },
+      ],
+    },
     weekly: {
       usage: 1,
       models: [
-        { name: "glm-5.2", request_count: 5967 },
-        { name: "kimi-k2.5", request_count: 2 },
+        { name: "minimax-m3", request_count: 422 },
+        { name: "kimi-k2.7-code", request_count: 971 },
+        { name: "invalid-count", request_count: "nope" },
       ],
     },
   },
@@ -85,6 +94,14 @@ describe("getUsageForProvider(ollama)", () => {
       remainingPercentage: 0,
       unlimited: false,
     });
+    expect(usage.quotas["Session (5h)"].models).toEqual([
+      { name: "minimax-m3", requestCount: 2 },
+      { name: "gemma4:31b", requestCount: 1 },
+    ]);
+    expect(usage.quotas["Weekly (7d)"].models).toEqual([
+      { name: "kimi-k2.7-code", requestCount: 971 },
+      { name: "minimax-m3", requestCount: 422 },
+    ]);
     // Must not set absolute remaining — UI treats remaining as %
     expect(usage.quotas["Session (5h)"].remaining).toBeUndefined();
     expect(usage.quotas["Weekly (7d)"].remaining).toBeUndefined();
@@ -138,12 +155,14 @@ describe("parseQuotaData(ollama)", () => {
           total: 100,
           remainingPercentage: 100,
           resetAt: null,
+          models: [{ name: "gemma4:31b", requestCount: 1 }],
         },
         "Weekly (7d)": {
           used: 100,
           total: 100,
           remainingPercentage: 0,
           resetAt: null,
+          models: [{ name: "kimi-k2.7-code", requestCount: 971 }],
         },
       },
     });
@@ -154,12 +173,14 @@ describe("parseQuotaData(ollama)", () => {
       used: 0,
       total: 100,
       remainingPercentage: 100,
+      models: [{ name: "gemma4:31b", requestCount: 1 }],
     });
     expect(rows[1]).toMatchObject({
       name: "Weekly (7d)",
       used: 100,
       total: 100,
       remainingPercentage: 0,
+      models: [{ name: "kimi-k2.7-code", requestCount: 971 }],
     });
   });
 });
