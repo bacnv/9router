@@ -71,6 +71,7 @@ export const QUOTA_AUTOPING_CONFIG = {
   providers: {
     claude: {
       settingsKey: "claudeAutoPing",    // preserve existing settings contract
+      authType: "oauth",                // eligibility is data-driven, not special-cased
       quotaKey: "session (5h)",         // quota key returned by usage handler
       pingModel: "claude-haiku-4-5-20251001",
       pingText: "hi",
@@ -78,6 +79,7 @@ export const QUOTA_AUTOPING_CONFIG = {
     },
     codex: {
       settingsKey: "codexAutoPing",
+      authType: "oauth",
       quotaKey: "session",
       pingWhenResetAtSlides: true,
       resetAtDriftMs: 30000,
@@ -88,6 +90,15 @@ export const QUOTA_AUTOPING_CONFIG = {
       pingText: "hi",
       pingInstructions: "Reply with OK.",
       pingReasoningEffort: "none",
+    },
+    ollama: {
+      settingsKey: "ollamaAutoPing",
+      authType: "apikey",
+      pingIntervalMs: 5 * 60 * 60 * 1000,
+      requiredQuotaKeys: ["Session (5h)", "Weekly (7d)"],
+      pingModel: "gemma4",
+      pingText: "hi",
+      pingMaxTokens: 1,
     },
   },
 };
