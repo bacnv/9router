@@ -553,5 +553,29 @@ describe("quota auto-ping", () => {
       expect(getOllamaUsage).not.toHaveBeenCalled();
       expect(deps.getExecutor).not.toHaveBeenCalled();
     });
+
+    it("does not refresh credentials or fetch usage when lastPingAt is within the 5h interval", async () => {
+      setupOllama({ lastPingAt: "2026-01-01T07:01:00.000Z" });
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(deps.refreshAndUpdateCredentials).not.toHaveBeenCalled();
+      expect(getOllamaUsage).not.toHaveBeenCalled();
+      expect(deps.getExecutor).not.toHaveBeenCalled();
+      expect(deps.updateProviderConnection).not.toHaveBeenCalled();
+    });
+
+    it("refreshes credentials and fetches usage when due (5h elapsed) then pings", async () => {
+      setupOllama({ lastPingAt: "2026-01-01T07:00:00.000Z" });
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(deps.refreshAndUpdateCredentials).toHaveBeenCalledTimes(1);
+      expect(getOllamaUsage).toHaveBeenCalledTimes(1);
+      expect(deps.getExecutor).toHaveBeenCalledWith("ollama");
+      expect(deps.updateProviderConnection).toHaveBeenCalledWith("ollama-1", expect.objectContaining({
+        lastPingAt: "2026-01-01T12:00:00.000Z",
+      }));
+    });
   });
 });
