@@ -565,11 +565,12 @@ export default function ProviderLimits() {
       const r = await fetch("/api/settings", { cache: "no-store" });
       const s = r.ok ? await r.json() : {};
       const cfg = { ...(s[settingsKey] || {}), connections: nextProviderMap };
-      await fetch("/api/settings", {
+      const res = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ [settingsKey]: cfg }),
       });
+      if (!res.ok) setAutoPingMaps(previous);
     } catch {
       setAutoPingMaps(previous);
     }

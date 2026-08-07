@@ -436,15 +436,18 @@ export default function ProviderDetailPage() {
     const autoPingSettingsKey = AUTO_PING_SETTINGS_KEYS[providerId];
     if (!autoPingSettingsKey) return;
 
+    const previous = autoPing;
     setAutoPing(next);
     try {
-      await fetch("/api/settings", {
+      const res = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ [autoPingSettingsKey]: next }),
       });
+      if (!res.ok) setAutoPing(previous);
     } catch (error) {
       console.log("Error saving auto-ping config:", error);
+      setAutoPing(previous);
     }
   };
 
