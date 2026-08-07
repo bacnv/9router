@@ -4,6 +4,7 @@ import "open-sse/index.js";
 import { getSettings, getProviderConnections, updateProviderConnection } from "@/lib/localDb";
 import { getClaudeUsage } from "open-sse/services/usage/claude.js";
 import { getCodexUsage } from "open-sse/services/usage/codex.js";
+import { getOllamaUsage } from "open-sse/services/usage/misc.js";
 import { getExecutor } from "open-sse/executors/index.js";
 import { CLAUDE_CLI_SPOOF_HEADERS } from "open-sse/providers/shared.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
@@ -16,12 +17,20 @@ const CLAUDE_PING_URL = "https://api.anthropic.com/v1/messages?beta=true";
 
 const providerHandlers = {
   claude: {
-    getUsage: getClaudeUsage,
+    getUsage: (connection, proxyOptions) => getClaudeUsage(connection.accessToken, proxyOptions),
     sendPing: sendClaudePing,
   },
   codex: {
-    getUsage: getCodexUsage,
+    getUsage: (connection, proxyOptions) => getCodexUsage(connection.accessToken, proxyOptions),
     sendPing: sendCodexPing,
+  },
+  ollama: {
+    getUsage: (connection, proxyOptions) => getOllamaUsage(
+      connection.apiKey,
+      connection.providerSpecificData,
+      proxyOptions,
+    ),
+    sendPing: sendOllamaPing,
   },
 };
 
@@ -82,6 +91,15 @@ function isBlockingQuotaName(name, sessionKey) {
 
 function hasExhaustedBlockingQuota(quotas, sessionKey) {
   return Object.entries(quotas || {}).some(([name, quota]) => isBlockingQuotaName(name, sessionKey) && isQuotaExhausted(quota));
+}
+
+function hasAvailableRequiredQuotas(quotas, keys) {
+  return keys.every((key) => {
+    const quota = quotas?.[key];
+    if (!quota) return false;
+    const remaining = toFiniteNumber(quota.remainingPercentage);
+    return remaining !== null ? remaining > 0 : !isQuotaExhausted(quota);
+  });
 }
 
 function shouldPingForReset(providerConfig, cachedReset, resetAt, now) {
@@ -180,6 +198,33 @@ async function sendCodexPing(connection, providerConfig, proxyOptions, deps) {
   return true;
 }
 
+async function sendOllamaPing(connection, providerConfig, proxyOptions, deps) {
+  const executor = deps.getExecutor("ollama");
+  const { response } = await executor.execute({
+    model: providerConfig.pingModel,
+    stream: false,
+    credentials: {
+      apiKey: connection.apiKey,
+      connectionId: connection.id,
+      providerSpecificData: connection.providerSpecificData,
+    },
+    proxyOptions,
+    log: console,
+    body: {
+      model: providerConfig.pingModel,
+      messages: [{ role: "user", content: providerConfig.pingText }],
+      stream: false,
+      options: { num_predict: providerConfig.pingMaxTokens },
+    },
+  });
+  if (!response.ok) {
+    try { await response.body?.cancel?.(); } catch { /* noop */ }
+    return false;
+  }
+  await drainResponseBody(response);
+  return true;
+}
+
 function shouldSkipAfterFailure(state, key, nowMs = Date.now()) {
   const failedAt = state.failureCache[key];
   return failedAt && nowMs - failedAt < C.failureCooldownMs;
@@ -208,8 +253,28 @@ async function pingConnection(conn, provider, providerConfig, handler, deps, sta
     return;
   }
 
-  const usage = await handler.getUsage(connection.accessToken, proxyOptions);
+  const usage = await handler.getUsage(connection, proxyOptions);
   const quotas = usage?.quotas || {};
+
+  // Ollama-style interval providers: ping on a fixed cadence when required quotas are available.
+  if (providerConfig.pingIntervalMs) {
+    if (!hasAvailableRequiredQuotas(quotas, providerConfig.requiredQuotaKeys || [])) return;
+    if (wasPingedRecently(connection, providerConfig.pingIntervalMs)) return;
+
+    const ok = await handler.sendPing(connection, providerConfig, proxyOptions, deps);
+    if (!ok) {
+      state.failureCache[key] = Date.now();
+      console.warn(`[AutoPing] ${provider}:${connection.id}: ping failed`);
+      return;
+    }
+
+    delete state.failureCache[key];
+    const now = new Date().toISOString();
+    await deps.updateProviderConnection(connection.id, { lastPingAt: now, updatedAt: now });
+    console.log(`[AutoPing] ${provider}:${connection.id}: ping sent`);
+    return;
+  }
+
   const quota = quotas?.[providerConfig.quotaKey];
   const resetAt = quota?.resetAt;
   if (!resetAt) return;
@@ -272,7 +337,9 @@ export async function runQuotaAutoPingTick(deps = createDefaultDeps(), state = g
       if (Object.keys(enabledMap).length === 0) continue;
 
       const conns = await deps.getProviderConnections({ provider, isActive: true });
-      const targets = conns.filter((conn) => conn.authType === "oauth" && enabledMap[conn.id] === true);
+      const targets = conns.filter((conn) =>
+        conn.authType === providerConfig.authType && enabledMap[conn.id] === true
+      );
       for (const conn of targets) {
         try {
           await pingConnection(conn, provider, providerConfig, handler, deps, state);
