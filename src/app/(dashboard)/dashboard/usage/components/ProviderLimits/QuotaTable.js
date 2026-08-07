@@ -194,6 +194,17 @@ export default function QuotaTable({
                     {quota.remaining}%
                   </span>
                 </div>
+
+                {Array.isArray(quota.models) && quota.models.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-x-1 text-[10px] text-text-muted">
+                    {quota.models.map((model, index) => (
+                      <span key={`${model.name}-${index}`} className="whitespace-nowrap">
+                        {index > 0 && <span className="mr-1">|</span>}
+                        {model.name} {model.requestCount.toLocaleString()}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Reset time */}
