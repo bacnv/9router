@@ -155,6 +155,19 @@ describe("quota auto-ping", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("starts and stops the scheduler for an Ollama-only opt-in", () => {
+    vi.useFakeTimers();
+
+    configureQuotaAutoPing({ ollamaAutoPing: { connections: {} } });
+    expect(vi.getTimerCount()).toBe(0);
+
+    configureQuotaAutoPing({ ollamaAutoPing: { connections: { "ollama-1": true } } });
+    expect(vi.getTimerCount()).toBe(1);
+
+    configureQuotaAutoPing({ ollamaAutoPing: { connections: { "ollama-1": false } } });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("does not ping Codex on the first resetAt observation", async () => {
     deps.getSettings.mockResolvedValue({ codexAutoPing: { connections: { "codex-1": true } } });
     deps.getProviderConnections.mockImplementation(async ({ provider }) => (
