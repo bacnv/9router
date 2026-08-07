@@ -81,10 +81,29 @@ export async function getOllamaUsage(apiKey, providerSpecificData, proxyOptions 
 
     // Ollama `usage` is a 0..1 ratio (1.0 = limit reached). Convert to a 0..100
     // bar. Do NOT set absolute `remaining` — QuotaTable reads remainingPercentage.
-    function ratioQuota(usageRatio, resetAt = null) {
+    function normalizeModels(models) {
+      return (Array.isArray(models) ? models : [])
+        .map((model, index) => ({
+          name: typeof model?.name === "string" ? model.name.trim() : "",
+          requestCount: Number(model?.request_count),
+          index,
+        }))
+        .filter((model) => model.name && Number.isFinite(model.requestCount) && model.requestCount >= 0)
+        .sort((a, b) => b.requestCount - a.requestCount || a.index - b.index)
+        .map(({ name, requestCount }) => ({ name, requestCount }));
+    }
+
+    function ratioQuota(usageRatio, models, resetAt = null) {
       const ratio = Math.max(0, Math.min(1, Number(usageRatio) || 0));
       const usedPct = Math.round(ratio * 100);
-      return { used: usedPct, total: 100, remainingPercentage: 100 - usedPct, resetAt, unlimited: false };
+      return {
+        used: usedPct,
+        total: 100,
+        remainingPercentage: 100 - usedPct,
+        resetAt,
+        unlimited: false,
+        models: normalizeModels(models),
+      };
     }
 
     const sessionRaw = limits.session?.usage;
@@ -103,8 +122,8 @@ export async function getOllamaUsage(apiKey, providerSpecificData, proxyOptions 
     }
 
     const quotas = {};
-    if (hasSession) quotas["Session (5h)"] = ratioQuota(sessionNum);
-    if (hasWeekly) quotas["Weekly (7d)"] = ratioQuota(weeklyNum);
+    if (hasSession) quotas["Session (5h)"] = ratioQuota(sessionNum, limits.session?.models);
+    if (hasWeekly) quotas["Weekly (7d)"] = ratioQuota(weeklyNum, limits.weekly?.models);
 
     return { plan, quotas };
   } catch (error) {
