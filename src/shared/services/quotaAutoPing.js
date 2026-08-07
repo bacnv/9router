@@ -240,6 +240,11 @@ async function pingConnection(conn, provider, providerConfig, handler, deps, sta
   // Avoid hammering provider auth/quota endpoints if a ping failed recently.
   if (shouldSkipAfterFailure(state, key)) return;
 
+  // Ollama-style interval providers: skip all upstream work (credential refresh,
+  // usage fetch, ping) until the fixed interval has elapsed since lastPingAt.
+  // Initial ping proceeds when lastPingAt is absent.
+  if (providerConfig.pingIntervalMs && wasPingedRecently(conn, providerConfig.pingIntervalMs)) return;
+
   const proxyCfg = await deps.resolveConnectionProxyConfig(conn.providerSpecificData);
   const proxyOptions = buildProxyOptions(proxyCfg);
 
@@ -259,7 +264,6 @@ async function pingConnection(conn, provider, providerConfig, handler, deps, sta
   // Ollama-style interval providers: ping on a fixed cadence when required quotas are available.
   if (providerConfig.pingIntervalMs) {
     if (!hasAvailableRequiredQuotas(quotas, providerConfig.requiredQuotaKeys || [])) return;
-    if (wasPingedRecently(connection, providerConfig.pingIntervalMs)) return;
 
     const ok = await handler.sendPing(connection, providerConfig, proxyOptions, deps);
     if (!ok) {
