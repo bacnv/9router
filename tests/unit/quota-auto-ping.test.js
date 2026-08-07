@@ -25,6 +25,7 @@ vi.mock("@/shared/constants/config", () => ({
     providers: {
       claude: {
         settingsKey: "claudeAutoPing",
+        authType: "oauth",
         quotaKey: "session (5h)",
         pingModel: "claude-haiku-4-5-20251001",
         pingText: "hi",
@@ -32,6 +33,7 @@ vi.mock("@/shared/constants/config", () => ({
       },
       codex: {
         settingsKey: "codexAutoPing",
+        authType: "oauth",
         quotaKey: "session",
         pingWhenResetAtSlides: true,
         resetAtDriftMs: 30000,
@@ -41,6 +43,15 @@ vi.mock("@/shared/constants/config", () => ({
         pingText: "hi",
         pingInstructions: "Reply with OK.",
         pingReasoningEffort: "none",
+      },
+      ollama: {
+        settingsKey: "ollamaAutoPing",
+        authType: "apikey",
+        pingIntervalMs: 5 * 60 * 60 * 1000,
+        requiredQuotaKeys: ["Session (5h)", "Weekly (7d)"],
+        pingModel: "gemma4",
+        pingText: "hi",
+        pingMaxTokens: 1,
       },
     },
   },
@@ -66,6 +77,10 @@ vi.mock("open-sse/services/usage/codex.js", () => ({
   getCodexUsage: vi.fn(),
 }));
 
+vi.mock("open-sse/services/usage/misc.js", () => ({
+  getOllamaUsage: vi.fn(),
+}));
+
 vi.mock("open-sse/executors/index.js", () => ({
   getExecutor: vi.fn(),
 }));
@@ -77,6 +92,7 @@ describe("quota auto-ping", () => {
   let state;
   let getCodexUsage;
   let getClaudeUsage;
+  let getOllamaUsage;
   let getExecutor;
   let codexResponseText;
 
@@ -88,6 +104,7 @@ describe("quota auto-ping", () => {
 
     ({ getCodexUsage } = await import("open-sse/services/usage/codex.js"));
     ({ getClaudeUsage } = await import("open-sse/services/usage/claude.js"));
+    ({ getOllamaUsage } = await import("open-sse/services/usage/misc.js"));
     ({ getExecutor } = await import("open-sse/executors/index.js"));
     ({ runQuotaAutoPingTick, configureQuotaAutoPing } = await import("../../src/shared/services/quotaAutoPing.js"));
 
@@ -367,6 +384,161 @@ describe("quota auto-ping", () => {
       model: "claude-haiku-4-5-20251001",
       max_tokens: 1,
       messages: [{ role: "user", content: "hi" }],
+    });
+  });
+
+  describe("ollama auto-ping", () => {
+    const ollamaUsageAvailable = {
+      quotas: {
+        "Session (5h)": { used: 20, total: 100, remainingPercentage: 80 },
+        "Weekly (7d)": { used: 30, total: 100, remainingPercentage: 70 },
+      },
+    };
+
+    const ollamaConn = (overrides = {}) => ({
+      id: "ollama-1",
+      provider: "ollama",
+      authType: "apikey",
+      apiKey: "ollama-key",
+      ...overrides,
+    });
+
+    function setupOllama(connOverrides = {}, settingsOverrides = {}) {
+      deps.getSettings.mockResolvedValue({
+        ollamaAutoPing: { connections: { "ollama-1": true } },
+        ...settingsOverrides,
+      });
+      deps.getProviderConnections.mockImplementation(async ({ provider }) => (
+        provider === "ollama" ? [ollamaConn(connOverrides)] : []
+      ));
+      getOllamaUsage.mockResolvedValue(ollamaUsageAvailable);
+    }
+
+    it("sends an initial minimal gemma4 ping for an opted-in Ollama API key", async () => {
+      deps.getSettings.mockResolvedValue({ ollamaAutoPing: { connections: { "ollama-1": true } } });
+      deps.getProviderConnections.mockResolvedValue([{
+        id: "ollama-1", provider: "ollama", authType: "apikey", apiKey: "ollama-key",
+      }]);
+      getOllamaUsage.mockResolvedValue(ollamaUsageAvailable);
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(getOllamaUsage).toHaveBeenCalledWith("ollama-key", undefined, expect.any(Object));
+      expect(deps.getExecutor).toHaveBeenCalledWith("ollama");
+      expect(deps.getExecutor.mock.results[0].value.execute).toHaveBeenCalledWith(expect.objectContaining({
+        model: "gemma4",
+        stream: false,
+        credentials: expect.objectContaining({ apiKey: "ollama-key", connectionId: "ollama-1" }),
+        body: {
+          model: "gemma4",
+          messages: [{ role: "user", content: "hi" }],
+          stream: false,
+          options: { num_predict: 1 },
+        },
+      }));
+      expect(deps.updateProviderConnection).toHaveBeenCalledWith("ollama-1", expect.objectContaining({
+        lastPingAt: "2026-01-01T12:00:00.000Z",
+      }));
+    });
+
+    it("does not ping Ollama again within the 5h interval (4h59m ago)", async () => {
+      setupOllama({ lastPingAt: "2026-01-01T07:01:00.000Z" });
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(deps.getExecutor).not.toHaveBeenCalled();
+      expect(deps.updateProviderConnection).not.toHaveBeenCalled();
+    });
+
+    it("pings Ollama again once 5h have passed since the last ping", async () => {
+      setupOllama({ lastPingAt: "2026-01-01T07:00:00.000Z" });
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(deps.getExecutor).toHaveBeenCalledWith("ollama");
+      expect(deps.updateProviderConnection).toHaveBeenCalledWith("ollama-1", expect.objectContaining({
+        lastPingAt: "2026-01-01T12:00:00.000Z",
+      }));
+    });
+
+    it("does not ping Ollama when Session (5h) quota is exhausted", async () => {
+      setupOllama();
+      getOllamaUsage.mockResolvedValue({
+        quotas: {
+          "Session (5h)": { used: 100, total: 100, remainingPercentage: 0 },
+          "Weekly (7d)": { used: 30, total: 100, remainingPercentage: 70 },
+        },
+      });
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(deps.getExecutor).not.toHaveBeenCalled();
+      expect(deps.updateProviderConnection).not.toHaveBeenCalled();
+    });
+
+    it("does not ping Ollama when Weekly (7d) quota is exhausted", async () => {
+      setupOllama();
+      getOllamaUsage.mockResolvedValue({
+        quotas: {
+          "Session (5h)": { used: 20, total: 100, remainingPercentage: 80 },
+          "Weekly (7d)": { used: 100, total: 100, remainingPercentage: 0 },
+        },
+      });
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(deps.getExecutor).not.toHaveBeenCalled();
+      expect(deps.updateProviderConnection).not.toHaveBeenCalled();
+    });
+
+    it("does not ping Ollama when either required quota key is missing", async () => {
+      setupOllama();
+      getOllamaUsage.mockResolvedValue({
+        quotas: {
+          "Session (5h)": { used: 20, total: 100, remainingPercentage: 80 },
+        },
+      });
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(deps.getExecutor).not.toHaveBeenCalled();
+      expect(deps.updateProviderConnection).not.toHaveBeenCalled();
+    });
+
+    it("records a failure cooldown and does not update connection when the ping response is not ok", async () => {
+      setupOllama();
+      deps.getExecutor.mockReturnValue({
+        execute: vi.fn().mockResolvedValue({ response: { ok: false, body: { cancel: vi.fn() } } }),
+      });
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(state.failureCache["ollama:ollama-1"]).toBeTypeOf("number");
+      expect(deps.updateProviderConnection).not.toHaveBeenCalled();
+    });
+
+    it("does not retry a failed Ollama ping within the failure cooldown", async () => {
+      setupOllama();
+      deps.getExecutor.mockReturnValue({
+        execute: vi.fn().mockResolvedValue({ response: { ok: false, body: { cancel: vi.fn() } } }),
+      });
+
+      await runQuotaAutoPingTick(deps, state);
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(deps.getExecutor.mock.results[0].value.execute).toHaveBeenCalledTimes(1);
+    });
+
+    it("ignores non-API-key Ollama connections", async () => {
+      setupOllama();
+      deps.getProviderConnections.mockImplementation(async ({ provider }) => (
+        provider === "ollama" ? [ollamaConn({ authType: "oauth", accessToken: "tok" })] : []
+      ));
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(getOllamaUsage).not.toHaveBeenCalled();
+      expect(deps.getExecutor).not.toHaveBeenCalled();
     });
   });
 });
