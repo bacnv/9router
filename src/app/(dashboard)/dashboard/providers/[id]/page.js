@@ -28,6 +28,7 @@ const ONE_BY_ONE_DELAY_MS = 1000;
 const AUTO_PING_SETTINGS_KEYS = {
   claude: "claudeAutoPing",
   codex: "codexAutoPing",
+  ollama: "ollamaAutoPing",
 };
 
 function sleep(ms) {
@@ -963,11 +964,14 @@ export default function ProviderDetailPage() {
                 onMoveUp={() => handleSwapPriority(index, index - 1)}
                 onMoveDown={() => handleSwapPriority(index, index + 1)}
                 onToggleActive={(isActive) => handleUpdateConnectionStatus(conn.id, isActive)}
-                autoPing={AUTO_PING_SETTINGS_KEYS[providerId] && conn.authType === "oauth" ? {
-                  on: autoPing.connections[conn.id] === true,
-                  onToggle: (on) => handleAutoPingConnection(conn.id, on),
-                  provider: providerId,
-                } : null}
+                autoPing={(AUTO_PING_SETTINGS_KEYS[providerId]
+                  && (conn.authType === "oauth" || (providerId === "ollama" && conn.authType === "apikey")))
+                  ? {
+                    on: autoPing.connections[conn.id] === true,
+                    onToggle: (on) => handleAutoPingConnection(conn.id, on),
+                    provider: providerId,
+                  }
+                  : null}
                 onUpdateProxy={async (proxyPoolId) => {
                   try {
                     const res = await fetch(`/api/providers/${conn.id}`, {
