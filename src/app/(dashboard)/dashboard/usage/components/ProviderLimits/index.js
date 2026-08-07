@@ -58,11 +58,13 @@ const KIRO_METHOD_LABELS = {
 const AUTO_PING_SETTINGS_KEYS = {
   claude: "claudeAutoPing",
   codex: "codexAutoPing",
+  ollama: "ollamaAutoPing",
 };
 
 const AUTO_PING_TOOLTIPS = {
   claude: "When your 5h quota runs out, auto-sends a request the moment it resets so a new window starts right away.",
   codex: "Auto-starts the next 5h Codex window after reset by sending a tiny gpt-5.5 request. Consumes a small amount of quota.",
+  ollama: "Sends a tiny gemma4 request every 5h while session and weekly quota remain. Consumes a small amount of quota.",
 };
 
 function kiroMethodLabel(conn) {
@@ -131,7 +133,7 @@ export default function ProviderLimits() {
   const [loading, setLoading] = useState({});
   const [errors, setErrors] = useState({});
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [autoPingMaps, setAutoPingMaps] = useState({ claude: {}, codex: {} });
+  const [autoPingMaps, setAutoPingMaps] = useState({ claude: {}, codex: {}, ollama: {} });
   const [lastUpdated, setLastUpdated] = useState(null);
   const [hasHydratedAutoRefresh, setHasHydratedAutoRefresh] = useState(false);
   const [refreshingAll, setRefreshingAll] = useState(false);
@@ -545,6 +547,7 @@ export default function ProviderLimits() {
         setAutoPingMaps({
           claude: s?.claudeAutoPing?.connections || {},
           codex: s?.codexAutoPing?.connections || {},
+          ollama: s?.ollamaAutoPing?.connections || {},
         });
         setQuotaVisibility(s?.quotaVisibility || {});
       })
@@ -1179,7 +1182,8 @@ export default function ProviderLimits() {
                         </Tooltip>
                       </>
                     )}
-                    {AUTO_PING_SETTINGS_KEYS[conn.provider] && conn.authType === "oauth" && (
+                    {AUTO_PING_SETTINGS_KEYS[conn.provider]
+                      && (conn.authType === "oauth" || (conn.provider === "ollama" && conn.authType === "apikey")) && (
                       <Tooltip text={AUTO_PING_TOOLTIPS[conn.provider]}>
                         <button
                           type="button"
