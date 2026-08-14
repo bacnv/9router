@@ -34,7 +34,7 @@ const USAGE_HANDLERS = {
   github: (c) => getGitHubUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
   "gemini-cli": (c) => getGeminiUsage(c.accessToken, c.providerDataWithProjectId, c.proxyOptions),
   antigravity: (c) => getAntigravityUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
-  claude: (c) => getClaudeUsage(c.accessToken, c.proxyOptions),
+  claude: (c) => getClaudeUsage(c.accessToken, c.proxyOptions, { force: c.force }),
   codex: (c) => getCodexUsage(c.accessToken, c.proxyOptions),
   kiro: (c) => getKiroUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
   qoder: async (c) => {
@@ -61,7 +61,7 @@ const USAGE_HANDLERS = {
   deepseek: (c) => getDeepseekUsage(c.apiKey, c.proxyOptions),
 };
 
-export async function getUsageForProvider(connection, proxyOptions = null) {
+export async function getUsageForProvider(connection, proxyOptions = null, options = {}) {
   const { provider, accessToken, apiKey, email, providerSpecificData, projectId } = connection;
   const providerDataWithProjectId = {
     ...(providerSpecificData || {}),
@@ -70,5 +70,14 @@ export async function getUsageForProvider(connection, proxyOptions = null) {
 
   const handler = USAGE_HANDLERS[provider];
   if (!handler) return { message: `Usage API not implemented for ${provider}` };
-  return await handler({ provider, accessToken, apiKey, email, providerSpecificData, providerDataWithProjectId, proxyOptions });
+  return await handler({
+    provider,
+    accessToken,
+    apiKey,
+    email,
+    providerSpecificData,
+    providerDataWithProjectId,
+    proxyOptions,
+    force: options.force === true,
+  });
 }
