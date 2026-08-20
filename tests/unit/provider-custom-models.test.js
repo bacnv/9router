@@ -59,6 +59,13 @@ describe("provider custom model rows", () => {
     ]);
   });
 
+  it("keeps explicit capabilities on custom model rows", () => {
+    expect(getProviderCustomModelRows({
+      customModels: [{ providerAlias: "ollama", id: "private-model", capabilities: { vision: true } }],
+      providerAlias: "ollama",
+    })[0]).toMatchObject({ capabilities: { vision: true } });
+  });
+
   it("filters built-in models and typed custom models", () => {
     const rows = getProviderCustomModelRows({
       customModels: [

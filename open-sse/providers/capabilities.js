@@ -66,6 +66,19 @@ export function capabilitiesFromServiceKind(kind) {
   return SERVICE_KIND_CAPABILITIES[kind] || null;
 }
 
+let customModelCapabilities = new Map();
+let customModelCapabilitiesById = new Map();
+
+export function setCustomModelCapabilities(models) {
+  const valid = (models || []).filter((model) => model?.providerAlias && model?.id && model?.capabilities);
+  customModelCapabilities = new Map(valid.map((model) => [`${model.providerAlias}/${model.id}`, model.capabilities]));
+  customModelCapabilitiesById = new Map();
+  for (const model of valid) {
+    if (customModelCapabilitiesById.has(model.id)) customModelCapabilitiesById.set(model.id, null);
+    else customModelCapabilitiesById.set(model.id, model.capabilities);
+  }
+}
+
 /**
  * Canonical exact-id overrides — used for exceptions that patterns would
  * otherwise mis-match. Only declare deltas vs DEFAULT.
@@ -325,8 +338,14 @@ export const PATTERN_CAPABILITIES = [
  * @param {string} model
  * @returns {object} full capabilities object
  */
-export function getCapabilitiesForModel(provider, model) {
+export function getCapabilitiesForModel(provider, model, skipCustom = false) {
   if (!model) return { ...DEFAULT_CAPABILITIES };
+
+  const customCaps = !skipCustom && (
+    customModelCapabilities.get(`${provider}/${model}`)
+    || customModelCapabilitiesById.get(model)
+  );
+  if (customCaps) return { ...getCapabilitiesForModel(provider, model, true), ...customCaps };
 
   // Canonical exact lookup strips vendor prefix: "anthropic/claude-opus-4.7" -> "claude-opus-4.7".
   const baseModel = model.includes("/") ? model.split("/").pop() : model;

@@ -232,6 +232,7 @@ export default function ModelSelectModal({
             value: `${alias}/${m.id}`,
             kind: getModelKind(m),
             isCustom: true,
+            capabilities: m.capabilities,
           }));
 
         // For typed kinds, only include hardcoded typed models (aliases are typically LLM-only and lack type info)
@@ -301,6 +302,7 @@ export default function ModelSelectModal({
             name: m.name || m.id,
             value: `${nodePrefix}/${m.id}`,
             isCustom: true,
+            capabilities: m.capabilities,
           }));
         const seen = new Set(nodeModels.map((m) => m.value));
         const mergedModels = [...nodeModels, ...registeredCustom.filter((m) => !seen.has(m.value))];
@@ -346,7 +348,7 @@ export default function ModelSelectModal({
         const customAliasIds = new Set(customAliasModels.map((m) => m.id));
         const customRegisteredModels = customModels
           .filter((m) => m.providerAlias === alias && !hardcodedIds.has(m.id) && !customAliasIds.has(m.id))
-          .map((m) => ({ id: m.id, name: m.name || m.id, value: `${alias}/${m.id}`, isCustom: true }));
+          .map((m) => ({ id: m.id, name: m.name || m.id, value: `${alias}/${m.id}`, isCustom: true, capabilities: m.capabilities }));
 
         const merged = [
           ...hardcodedModels.map((m) => ({ id: m.id, name: m.name, value: `${alias}/${m.id}`, kind: getModelKind(m) })),
@@ -420,7 +422,7 @@ export default function ModelSelectModal({
       let models = group.models;
       // Filter by input-modality capability (vision/pdf/audioInput/videoInput).
       if (capFilter) {
-        models = models.filter((m) => getCaps(m.value)?.[capFilter] === true);
+        models = models.filter((m) => (m.capabilities || getCaps(m.value))?.[capFilter] === true);
         if (models.length === 0) return;
       }
       if (query) {
@@ -583,12 +585,12 @@ export default function ModelSelectModal({
                         <>
                           {model.name}
                           <span className="text-[9px] opacity-60 font-normal">custom</span>
-                          <CapacityBadges caps={getCaps(model.value)} />
+                          <CapacityBadges caps={model.capabilities || getCaps(model.value)} />
                         </>
                       ) : (
                         <>
                           {model.name}
-                          <CapacityBadges caps={getCaps(model.value)} />
+                          <CapacityBadges caps={model.capabilities || getCaps(model.value)} />
                         </>
                       )}
                     </span>

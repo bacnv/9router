@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCustomModels, addCustomModel, deleteCustomModel } from "@/models";
+import { probeVisionCapability } from "../test/ping";
+import { detectCustomModelCapabilities } from "./capabilities";
 
 export const dynamic = "force-dynamic";
 
@@ -17,12 +19,27 @@ export async function GET() {
 // POST /api/models/custom - Add custom model
 export async function POST(request) {
   try {
-    const { providerAlias, id, type, name } = await request.json();
+    const { providerAlias, id, type, name, capabilities } = await request.json();
     if (!providerAlias || !id) {
       return NextResponse.json({ error: "providerAlias and id required" }, { status: 400 });
     }
-    const added = await addCustomModel({ providerAlias, id, type: type || "llm", name });
-    return NextResponse.json({ success: true, added });
+    const modelType = type || "llm";
+    const submittedCapabilities = capabilities && { vision: capabilities.vision === true };
+    const detectedCapabilities = modelType === "llm"
+      ? await detectCustomModelCapabilities(
+          `${providerAlias}/${id}`,
+          submittedCapabilities,
+          probeVisionCapability,
+        )
+      : submittedCapabilities;
+    const added = await addCustomModel({
+      providerAlias,
+      id,
+      type: modelType,
+      name,
+      capabilities: detectedCapabilities,
+    });
+    return NextResponse.json({ success: true, added, capabilities: detectedCapabilities });
   } catch (error) {
     console.log("Error adding custom model:", error);
     return NextResponse.json({ error: "Failed to add custom model" }, { status: 500 });

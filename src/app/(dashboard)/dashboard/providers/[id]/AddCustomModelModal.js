@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import PropTypes from "prop-types";
 import { Button, Modal } from "@/shared/components";
 
@@ -9,11 +9,7 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
   const [testStatus, setTestStatus] = useState(null); // null | "testing" | "ok" | "error"
   const [testError, setTestError] = useState("");
   const [saving, setSaving] = useState(false);
-
-  // Reset state when modal opens
-  useEffect(() => {
-    if (isOpen) { setModelId(""); setTestStatus(null); setTestError(""); }
-  }, [isOpen]);
+  const [vision, setVision] = useState(false);
 
   // Strip provider's own alias prefix (e.g. "cc/model" -> "model" for cc provider)
   const stripAlias = (id) => {
@@ -35,6 +31,7 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
       const data = await res.json();
       setTestStatus(data.ok ? "ok" : "error");
       setTestError(data.error || "");
+      if (data.vision === true) setVision(true);
     } catch (err) {
       setTestStatus("error");
       setTestError(err.message);
@@ -46,7 +43,8 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
     if (!cleanId || saving) return;
     setSaving(true);
     try {
-      await onSave(cleanId);
+      await onSave(cleanId, { vision });
+      setVision(false);
     } finally {
       setSaving(false);
     }
@@ -85,6 +83,16 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
             Sent to provider as: <code className="font-mono bg-sidebar px-1 rounded">{stripAlias(modelId.trim()) || "model-id"}</code>
           </p>
         </div>
+
+        <label className="flex cursor-pointer items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={vision}
+            onChange={(e) => setVision(e.target.checked)}
+            className="h-4 w-4 rounded border-border accent-primary"
+          />
+          Supports vision (image input)
+        </label>
 
         {/* Test result */}
         {testStatus === "ok" && (

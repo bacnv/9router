@@ -1,8 +1,10 @@
 // Guards forceStream moved from chatCore hardcode → PROVIDERS schema (#5).
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { executeMock } = vi.hoisted(() => ({
+const { executeMock, capsMock, stripModalitiesMock } = vi.hoisted(() => ({
   executeMock: vi.fn(),
+  capsMock: vi.fn(() => ({ vision: false })),
+  stripModalitiesMock: vi.fn(() => false),
 }));
 
 vi.mock("../../open-sse/executors/index.js", () => ({
@@ -71,14 +73,15 @@ vi.mock("../../open-sse/rtk/index.js", () => ({
 vi.mock("../../open-sse/rtk/headroom.js", () => ({
   compressWithHeadroom: vi.fn(async () => null),
   formatHeadroomLog: vi.fn(() => ""),
+  formatHeadroomSizeLog: vi.fn(() => ""),
 }));
 
 vi.mock("../../open-sse/providers/capabilities.js", () => ({
-  getCapabilitiesForModel: vi.fn(() => ({})),
+  getCapabilitiesForModel: capsMock,
 }));
 
 vi.mock("../../open-sse/translator/concerns/modality.js", () => ({
-  stripUnsupportedModalities: vi.fn(() => false),
+  stripUnsupportedModalities: stripModalitiesMock,
 }));
 
 vi.mock("../../open-sse/translator/concerns/prefetch.js", () => ({
@@ -149,5 +152,27 @@ describe("forceStream provider config", () => {
 
     expect(executeMock).toHaveBeenCalledTimes(1);
     expect(executeMock.mock.calls[0][0].stream).toBe(true);
+  });
+
+  it("allows media through only for an internal vision probe", async () => {
+    const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+    const options = makeOptions(false);
+    options.body.metadata = { vision_probe: true };
+    options.clientRawRequest.headers["x-9r-vision-probe"] = "token";
+    options.visionProbe = true;
+
+    await handleChatCore(options);
+
+    expect(stripModalitiesMock).toHaveBeenCalledWith(options.body, expect.any(String), expect.objectContaining({ vision: true }));
+  });
+
+  it("does not trust an unmarked client vision probe", async () => {
+    const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+    const options = makeOptions(false);
+    options.body.metadata = { vision_probe: true };
+
+    await handleChatCore(options);
+
+    expect(stripModalitiesMock).toHaveBeenCalledWith(options.body, expect.any(String), expect.objectContaining({ vision: false }));
   });
 });
