@@ -12,7 +12,7 @@ vi.mock("@/lib/localDb", () => ({ getApiKeys: vi.fn(async () => [{ key: "test-ke
 vi.mock("@/shared/constants/config", () => ({ UPDATER_CONFIG: { appPort: 20127 } }));
 vi.mock("@/shared/utils/machineId", () => ({ getConsistentMachineId: vi.fn(async () => "cli-token") }));
 
-const { pingModelByKind, probeVisionCapability } = await import("../../src/app/api/models/test/ping.js");
+const { pingModelByKind } = await import("../../src/app/api/models/test/ping.js");
 
 describe("pingModelByKind reasoning models (#3010)", () => {
   let fetchMock;
@@ -73,24 +73,5 @@ describe("pingModelByKind reasoning models (#3010)", () => {
     fetchMock.mockResolvedValue(jsonResponse({ choices: [{ message: { content: "Hello!" } }] }));
     const result = await pingModelByKind("openai/gpt-4o", "llm", "http://127.0.0.1:20127");
     expect(result.ok).toBe(true);
-  });
-
-  it("confirms vision only when the model reads the image challenge", async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ choices: [{ message: { content: "9R7K2M" } }] }));
-    const result = await probeVisionCapability("custom/private", "http://127.0.0.1:20127");
-    expect(result).toEqual({ vision: true });
-    const request = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(request.messages[0].content[1].image_url.url).toMatch(/^data:image\/png;base64,/);
-    expect(fetchMock.mock.calls[0][1].headers["x-9r-vision-probe"]).toBe("cli-token");
-  });
-
-  it("leaves vision unknown when a successful response misses the challenge", async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ choices: [{ message: { content: "I cannot see images" } }] }));
-    expect(await probeVisionCapability("custom/private", "http://127.0.0.1:20127", "VISION-4827")).toEqual({ vision: null });
-  });
-
-  it("leaves vision unknown when the provider rejects the probe", async () => {
-    fetchMock.mockResolvedValue({ ok: false, status: 400, text: async () => "unsupported image" });
-    expect(await probeVisionCapability("custom/private", "http://127.0.0.1:20127", "VISION-4827")).toEqual({ vision: null });
   });
 });

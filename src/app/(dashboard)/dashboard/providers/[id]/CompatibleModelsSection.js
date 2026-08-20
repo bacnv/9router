@@ -74,7 +74,6 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
 export default function CompatibleModelsSection({ providerStorageAlias, providerDisplayAlias, modelAliases, customModels, copied, onCopy, onDeleteAlias, onAddCustomModel, onDeleteCustomModel, connections, isAnthropic }) {
   const [newModel, setNewModel] = useState("");
   const [adding, setAdding] = useState(false);
-  const [vision, setVision] = useState(false);
   const [importing, setImporting] = useState(false);
   const [testingModelId, setTestingModelId] = useState(null);
   const [modelTestResults, setModelTestResults] = useState({});
@@ -90,7 +89,6 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
       });
       const data = await res.json();
       setModelTestResults((prev) => ({ ...prev, [modelId]: data.ok ? "ok" : "error" }));
-      if (data.vision === true) setVision(true);
     } catch {
       setModelTestResults((prev) => ({ ...prev, [modelId]: "error" }));
     } finally {
@@ -115,9 +113,8 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
 
     setAdding(true);
     try {
-      await onAddCustomModel(modelId, { vision });
+      await onAddCustomModel(modelId);
       setNewModel("");
-      setVision(false);
     } catch (error) {
       console.log("Error adding model:", error);
     } finally {
@@ -182,10 +179,6 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
             className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
           />
         </div>
-        <label className="flex items-center gap-2 pb-2 text-xs text-text-muted">
-          <input type="checkbox" checked={vision} onChange={(e) => setVision(e.target.checked)} className="h-4 w-4 accent-primary" />
-          Vision
-        </label>
         <Button size="sm" icon="add" onClick={handleAdd} disabled={!newModel.trim() || adding}>
           {adding ? "Adding..." : "Add"}
         </Button>
