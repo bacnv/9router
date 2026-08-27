@@ -12,6 +12,8 @@ import {
   USAGE_APIKEY_PROVIDERS,
 } from "../../src/shared/constants/providers.js";
 import { parseQuotaData } from "../../src/app/(dashboard)/dashboard/usage/components/ProviderLimits/utils.js";
+import { PROVIDER_MODELS } from "../../open-sse/providers/index.js";
+import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.js";
 
 const USAGE_URL = "https://ollama.com/api/usage";
 const ME_URL = "https://ollama.com/api/me";
@@ -62,6 +64,15 @@ describe("ollama registry usage flags", () => {
   it("is listed for apikey quota dashboard", () => {
     expect(USAGE_SUPPORTED_PROVIDERS).toContain("ollama");
     expect(USAGE_APIKEY_PROVIDERS).toContain("ollama");
+  });
+
+  it("exposes GLM 5.3 Flash with vision and thinking", () => {
+    expect(PROVIDER_MODELS.ollama.some((model) => model.id === "glm-5.3-flash")).toBe(true);
+    expect(getCapabilitiesForModel("ollama", "glm-5.3-flash")).toMatchObject({
+      vision: true,
+      reasoning: true,
+      thinkingFormat: "zai",
+    });
   });
 });
 
