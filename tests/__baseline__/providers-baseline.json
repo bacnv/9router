@@ -1009,5 +1009,9 @@
       "preserveCacheControl": true
     },
     "format": "openai"
+  },
+  "fci-ai": {
+    "baseUrl": "https://mkp-api.fptcloud.com/chat/completions",
+    "format": "openai"
   }
 }
