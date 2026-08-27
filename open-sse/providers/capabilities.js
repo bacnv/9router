@@ -144,6 +144,9 @@ const CODEX_GPT_56_DEFAULT_CAPS = { vision: true, reasoning: true, search: true,
  * Provider-specific capability overrides. Keyed by provider alias/id.
  */
 export const PROVIDER_CAPABILITIES = {
+  "fci-ai": {
+    "Qwen3.8-27B": { vision: true },
+  },
   // NVIDIA NIM is OpenAI-compatible → rejects MiniMax/GLM native `thinking` field.
   // Force openai reasoning_effort format for its reasoning models. #issue
   "nvidia": {
