@@ -28,7 +28,12 @@ describe("FCI AI provider", () => {
 
   it("marks only Qwen3.8-27B as vision-capable", () => {
     expect(getCapabilitiesForModel("fci-ai", "GLM-5.2").vision).toBe(false);
-    expect(getCapabilitiesForModel("fci-ai", "Qwen3.8-27B").vision).toBe(true);
-    expect(getCapabilitiesForModel("fci", "Qwen3.8-27B").vision).toBe(true);
+    for (const provider of ["fci-ai", "fci"]) {
+      expect(getCapabilitiesForModel(provider, "Qwen3.8-27B")).toMatchObject({
+        vision: true,
+        reasoning: true,
+        thinkingFormat: "qwen",
+      });
+    }
   });
 });
