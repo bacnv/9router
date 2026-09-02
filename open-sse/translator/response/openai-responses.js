@@ -7,6 +7,7 @@ import { FORMATS } from "../formats.js";
 import { buildChunk } from "../concerns/chunk.js";
 import { buildUsage } from "../concerns/usage.js";
 import { fallbackToolCallId } from "../concerns/toolCall.js";
+import { removeNullOptionalToolFields } from "../concerns/optionalToolFields.js";
 import { reasoningDelta, extractReasoningText } from "../concerns/reasoning.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, OPENAI_FINISH, MODEL_FALLBACK } from "../schema/index.js";
 
@@ -451,8 +452,8 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     // output_item.added events before any done/delta. Lazily created so callers
     // that build their own state object (stream.js) need no changes.
     state.respToolChatIndex ??= new Map();
-    // Indices that already received argument deltas (guards done-with-args).
-    state.respToolArgsEmitted ??= new Set();
+    state.respToolNames ??= new Map();
+    state.respToolArgs ??= new Map();
   }
 
   // Text content delta
@@ -488,6 +489,10 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
       idx = state.toolCallIndex++;
       if (key) state.respToolChatIndex.set(key, idx);
     }
+    state.respToolNames ??= new Map();
+    state.respToolArgs ??= new Map();
+    state.respToolNames.set(idx, item.name || "");
+    state.respToolArgs.set(idx, "");
 
     return buildChunk(
       { id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK },
@@ -502,40 +507,29 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     );
   }
 
-  // Function call arguments delta (standard or custom_tool_call variant).
-  // Routed by item_id so interleaved parallel fragments stay on their own call.
+  // Buffer per item_id so parallel calls stay separate and optional null placeholders
+  // can be removed only after each argument object is complete.
   if (eventType === "response.function_call_arguments.delta" || eventType === "response.custom_tool_call_input.delta") {
-    const argsDelta = data.delta || "";
-    if (!argsDelta) return null;
-
     const known = data.item_id ? state.respToolChatIndex?.get(data.item_id) : undefined;
     const idx = known ?? Math.max(0, (state.toolCallIndex || 1) - 1);
-    state.respToolArgsEmitted ??= new Set();
-    state.respToolArgsEmitted.add(idx);
-    return buildChunk(
-      { id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK },
-      { tool_calls: [{ index: idx, function: { arguments: argsDelta } }] }
-    );
+    state.respToolArgs ??= new Map();
+    state.respToolArgs.set(idx, (state.respToolArgs.get(idx) || "") + (data.delta || ""));
+    return null;
   }
 
-  // Function call done (standard or custom_tool_call variant).
-  // Index was assigned at added-time; nothing to advance. Some upstreams send
-  // complete arguments only here (no deltas) — emit them once in that case.
+  // Index was assigned at added-time; emit the complete sanitized arguments once.
   if (eventType === "response.output_item.done" && (data.item?.type === RESPONSES_ITEM.FUNCTION_CALL || data.item?.type === "custom_tool_call")) {
     const key = data.item?.id || data.item_id;
     const idx = (key && state.respToolChatIndex?.get(key)) ?? Math.max(0, (state.toolCallIndex || 1) - 1);
-    const fullArgs = data.item?.arguments;
-    if (typeof fullArgs === "string" && fullArgs) {
-      state.respToolArgsEmitted ??= new Set();
-      if (!state.respToolArgsEmitted.has(idx)) {
-        state.respToolArgsEmitted.add(idx);
-        return buildChunk(
-          { id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK },
-          { tool_calls: [{ index: idx, function: { arguments: fullArgs } }] }
-        );
-      }
-    }
-    return null;
+    const args = removeNullOptionalToolFields(
+      state.respToolNames?.get(idx) || data.item?.name || "",
+      state.respToolArgs?.get(idx) || data.item?.arguments || "{}",
+      state.optionalToolFields,
+    );
+    return buildChunk(
+      { id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK },
+      { tool_calls: [{ index: idx, function: { arguments: args } }] }
+    );
   }
 
   // Response completed
