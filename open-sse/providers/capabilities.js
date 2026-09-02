@@ -146,7 +146,6 @@ const CODEX_GPT_56_DEFAULT_CAPS = { vision: true, reasoning: true, search: true,
 export const PROVIDER_CAPABILITIES = {
   "fci-ai": { "Qwen3.8-27B": { vision: true, reasoning: true, thinkingFormat: "qwen" } },
   "fci": { "Qwen3.8-27B": { vision: true, reasoning: true, thinkingFormat: "qwen" } },
-  "ollama": { "glm-5.3-flash": { vision: true, reasoning: true, thinkingFormat: "zai" } },
   // NVIDIA NIM is OpenAI-compatible → rejects MiniMax/GLM native `thinking` field.
   // Force openai reasoning_effort format for its reasoning models. #issue
   "nvidia": {
