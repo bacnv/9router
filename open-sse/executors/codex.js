@@ -7,6 +7,7 @@ import {
 } from "../services/oauthCredentialManager.js";
 import { normalizeResponsesInput } from "../translator/formats/responsesApi.js";
 import { fetchImageAsBase64 } from "../translator/concerns/image.js";
+import { makeOptionalToolFieldsNullable } from "../translator/concerns/optionalToolFields.js";
 import { getModelUpstreamId } from "../config/providerModels.js";
 import { getThinkingLevels } from "../providers/thinkingLevels.js";
 import { DEFAULT_RETRY_CONFIG, HTTP_STATUS, resolveRetryEntry } from "../config/runtimeConfig.js";
@@ -108,7 +109,10 @@ function normalizeCodexTools(body) {
     tool.type = "function";
     tool.name = name.slice(0, 128);
     if (description) tool.description = description;
-    tool.parameters = stripCodexUnsupportedPatterns(parameters, patternStats);
+    tool.parameters = stripCodexUnsupportedPatterns(
+      makeOptionalToolFieldsNullable(parameters),
+      patternStats,
+    );
     validNames.add(name);
     return true;
   });
