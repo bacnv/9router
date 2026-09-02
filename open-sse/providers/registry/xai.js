@@ -1,3 +1,5 @@
+import { GROK_CLI_BASE_URL } from "../../config/grokCli.js";
+
 export default {
   id: "xai",
   priority: 280,
@@ -25,10 +27,14 @@ export default {
     clientId: "b1a00492-073a-47ea-816f-4c329264a828",
     tokenUrl: "https://auth.x.ai/oauth2/token",
     refreshUrl: "https://auth.x.ai/oauth2/token",
+    usage: {
+      url: `${GROK_CLI_BASE_URL}/billing?format=credits`,
+      monthlyUrl: `${GROK_CLI_BASE_URL}/billing`,
+      userUrl: `${GROK_CLI_BASE_URL}/user?include=subscription`,
+    },
   },
+  features: { usage: true },
   models: [
-    { id: "grok-4.6", name: "Grok 4.6" },
-    { id: "grok-4.5", name: "Grok 4.5" },
     { id: "grok-4", name: "Grok 4" },
     { id: "grok-4-fast-reasoning", name: "Grok 4 Fast Reasoning" },
     { id: "grok-code-fast-1", name: "Grok Code Fast" },
