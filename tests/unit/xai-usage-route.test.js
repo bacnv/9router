@@ -105,6 +105,7 @@ describe("xAI usage route", () => {
       2,
       expect.objectContaining(refreshedConnection),
       expect.objectContaining({ strictProxy: false }),
+      { force: false },
     );
   });
 });

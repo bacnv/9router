@@ -35,6 +35,8 @@ export default {
   },
   features: { usage: true },
   models: [
+    { id: "grok-4.6", name: "Grok 4.6" },
+    { id: "grok-4.5", name: "Grok 4.5" },
     { id: "grok-4", name: "Grok 4" },
     { id: "grok-4-fast-reasoning", name: "Grok 4 Fast Reasoning" },
     { id: "grok-code-fast-1", name: "Grok Code Fast" },
