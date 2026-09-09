@@ -25,7 +25,9 @@ export default {
   },
   models: [
     { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro" },
+    { id: "deepseek-v4-pro-0813", name: "DeepSeek V4 Pro 0813" },
     { id: "deepseek-v4-flash", name: "DeepSeek V4 Flash" },
+    { id: "deepseek-v4-flash-0731", name: "DeepSeek V4 Flash 0731" },
     { id: "glm-5.3", name: "GLM 5.3" },
     { id: "glm-5.3-flash", name: "GLM 5.3 Flash" },
     { id: "glm-5.2", name: "GLM 5.2" },
