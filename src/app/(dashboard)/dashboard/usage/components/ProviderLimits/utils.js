@@ -599,14 +599,15 @@ export function parseQuotaData(provider, data) {
         }
         break;
 
+      case "charm":
       case "deepseek":
-        // Credit balance — remainingPercentage only (no absolute remaining).
         if (data.quotas) {
           Object.entries(data.quotas).forEach(([name, quota]) => {
             normalizedQuotas.push({
               name,
               used: quota.used || 0,
               total: quota.total || 0,
+              remaining: quota.remaining,
               resetAt: quota.resetAt || null,
               remainingPercentage: quota.remainingPercentage,
             });

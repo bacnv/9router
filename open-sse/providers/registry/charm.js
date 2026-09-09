@@ -19,6 +19,9 @@ export default {
   transport: {
     baseUrl: "https://hyper.charm.land/v1/chat/completions",
     validateUrl: "https://hyper.charm.land/v1/models",
+    usage: {
+      url: "https://hyper.charm.land/v1/credits",
+    },
   },
   models: [
     { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro" },
@@ -54,4 +57,8 @@ export default {
     { id: "llama-3.3-70b-instruct", name: "Llama 3.3 70B" },
   ],
   passthroughModels: true,
+  features: {
+    usage: true,
+    usageApikey: true,
+  },
 };
