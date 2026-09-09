@@ -144,6 +144,7 @@ export function createSSEStream(options = {}) {
           let output;
           let injectedUsage = false;
           let responsesTerminal = false;
+          let chatTerminal = false;
 
           if (trimmed.startsWith("data:") && trimmed.slice(5).trim() !== "[DONE]") {
             try {
@@ -214,6 +215,7 @@ export function createSSEStream(options = {}) {
               responsesTerminal = isOpenAIResponsesTerminalEvent(currentOpenAIResponsesEvent, parsed);
 
               const isFinishChunk = parsed.choices?.[0]?.finish_reason;
+              chatTerminal = Boolean(isFinishChunk);
               if (isFinishChunk && !hasValidUsage(parsed.usage)) {
                 const estimated = estimateUsage(body, totalContentLength, FORMATS.OPENAI);
                 parsed.usage = filterUsageForFormat(estimated, FORMATS.OPENAI);
@@ -247,8 +249,8 @@ export function createSSEStream(options = {}) {
 
           reqLogger?.appendConvertedChunk?.(output);
           controller.enqueue(sharedEncoder.encode(output));
-          // Responses clients (codex CLI) close on response.completed instead of [DONE]
-          if (responsesTerminal) finalizeStream();
+          // Clients may close immediately after the terminal event, before upstream EOF.
+          if (responsesTerminal || chatTerminal) finalizeStream();
           continue;
         }
 
@@ -388,6 +390,9 @@ export function createSSEStream(options = {}) {
             sseEmittedCount++;
           }
         }
+
+        // A client may close after the translated terminal chunk, before upstream EOF.
+        if (state.finishReason) finalizeStream();
       }
     },
 
