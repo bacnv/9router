@@ -202,6 +202,10 @@ export function createSSEStream(options = {}) {
                 totalContentLength += reasoning.length;
                 accumulatedThinking += reasoning;
               }
+              for (const toolCall of delta?.tool_calls || []) {
+                totalContentLength += (toolCall.function?.name || "").length;
+                totalContentLength += (toolCall.function?.arguments || "").length;
+              }
 
               const extracted = extractUsage(parsed);
               if (extracted) {
@@ -309,7 +313,12 @@ export function createSSEStream(options = {}) {
           totalContentLength += parsed.choices[0].delta.reasoning_content.length;
           accumulatedThinking += parsed.choices[0].delta.reasoning_content;
         }
-        
+        // OpenAI format - tool calls (tool-only replies still need usage tracking)
+        for (const toolCall of parsed.choices?.[0]?.delta?.tool_calls || []) {
+          totalContentLength += (toolCall.function?.name || "").length;
+          totalContentLength += (toolCall.function?.arguments || "").length;
+        }
+
         // Gemini format
         if (parsed.candidates?.[0]?.content?.parts) {
           for (const part of parsed.candidates[0].content.parts) {

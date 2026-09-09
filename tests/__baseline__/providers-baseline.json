@@ -1027,6 +1027,9 @@
   "charm": {
     "baseUrl": "https://hyper.charm.land/v1/chat/completions",
     "validateUrl": "https://hyper.charm.land/v1/models",
+    "usage": {
+      "url": "https://hyper.charm.land/v1/credits"
+    },
     "format": "openai"
   }
 }
