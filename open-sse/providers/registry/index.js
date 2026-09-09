@@ -125,8 +125,8 @@ import p119 from "./selfhosted-embedding.js";
 import p120 from "./fish-audio.js";
 import p121 from "./alitp-intl.js";
 import p122 from "./xquik.js";
-import p124 from "./fci-ai.js";
-import p125 from "./charm.js";
+import p126 from "./fci-ai.js";
+import p127 from "./charm.js";
 
 export default [
   p0,
@@ -197,7 +197,7 @@ export default [
   p65,
   p66,
   p123,
-  p124,
+  p127,
   p67,
   p68,
   p68z,
@@ -254,5 +254,5 @@ export default [
   p121,
   p122,
   p124,
-  p125,
+  p126,
 ];

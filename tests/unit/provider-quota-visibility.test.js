@@ -72,4 +72,25 @@ describe("provider quota visibility", () => {
     };
     expect(filterQuotasByVisibility("antigravity", quotas, visibility)).toHaveLength(2);
   });
+
+  it("preserves Charm credit balance percentage", () => {
+    const quotas = parseQuotaData("charm", {
+      quotas: {
+        "Monthly Hypercredits": {
+          used: 25,
+          total: 100,
+          remaining: 75,
+          remainingPercentage: 75,
+        },
+      },
+    });
+
+    expect(quotas).toEqual([expect.objectContaining({
+      name: "Monthly Hypercredits",
+      used: 25,
+      total: 100,
+      remaining: 75,
+      remainingPercentage: 75,
+    })]);
+  });
 });
