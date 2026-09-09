@@ -438,6 +438,9 @@
   "groq": {
     "baseUrl": "https://api.groq.com/openai/v1/chat/completions",
     "validateUrl": "https://api.groq.com/openai/v1/models",
+    "usage": {
+      "url": "https://api.groq.com/openai/v1/models"
+    },
     "format": "openai"
   },
   "hyperbolic": {
@@ -709,6 +712,9 @@
   "opencode-go": {
     "baseUrl": "https://opencode.ai/zen/go/v1/chat/completions",
     "headers": {},
+    "usage": {
+      "url": "https://opencode.ai/zen/go/v1/usage"
+    },
     "format": "openai",
     "transports": [
       {
@@ -831,6 +837,11 @@
     "clientId": "b1a00492-073a-47ea-816f-4c329264a828",
     "tokenUrl": "https://auth.x.ai/oauth2/token",
     "refreshUrl": "https://auth.x.ai/oauth2/token",
+    "usage": {
+      "url": "https://cli-chat-proxy.grok.com/v1/billing?format=credits",
+      "monthlyUrl": "https://cli-chat-proxy.grok.com/v1/billing",
+      "userUrl": "https://cli-chat-proxy.grok.com/v1/user?include=subscription"
+    },
     "format": "openai"
   },
   "xiaomi-mimo": {
@@ -1012,6 +1023,11 @@
   },
   "fci-ai": {
     "baseUrl": "https://mkp-api.fptcloud.com/chat/completions",
+    "format": "openai"
+  },
+  "charm": {
+    "baseUrl": "https://hyper.charm.land/v1/chat/completions",
+    "validateUrl": "https://hyper.charm.land/v1/models",
     "format": "openai"
   }
 }

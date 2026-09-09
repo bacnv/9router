@@ -116,7 +116,10 @@
     "devin": "devin",
     "devin-cli": "devin-cli",
     "morph": "morph",
-    "morphllm": "morph"
+    "morphllm": "morph",
+    "charm": "charm",
+    "hyper-charm": "charm",
+    "charm-land": "charm"
   },
   "idToAlias": {
     "alicode": "alicode",
@@ -134,6 +137,7 @@
     "bluesminds": "bm",
     "byteplus": "byteplus",
     "cerebras": "cerebras",
+    "charm": "charm",
     "chutes": "chutes",
     "claude": "cc",
     "cline": "cl",
@@ -220,6 +224,7 @@
     "cbcn",
     "cc",
     "cerebras",
+    "charm",
     "cl",
     "clinepass",
     "cloudflare-ai",
