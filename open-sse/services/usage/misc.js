@@ -212,6 +212,48 @@ export async function getVercelAiGatewayUsage(apiKey, proxyOptions = null) {
   }
 }
 
+export async function getCharmUsage(apiKey, proxyOptions = null) {
+  if (!apiKey) return { message: "Charm API key not available." };
+
+  try {
+    const response = await proxyAwareFetch(U("charm").url, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        Accept: "application/json",
+      },
+    }, proxyOptions);
+
+    if (response.status === 401 || response.status === 403) {
+      return { message: "Charm API key invalid or expired." };
+    }
+    if (!response.ok) {
+      return { message: `Charm credits API error (${response.status}).` };
+    }
+
+    const data = await response.json().catch(() => null);
+    const balance = Number(data?.balance);
+    if (!Number.isFinite(balance) || balance < 0) {
+      return { message: "Charm credits response did not contain a valid balance." };
+    }
+
+    const monthlyCredits = 100;
+    return {
+      plan: "Charm",
+      quotas: {
+        "Monthly Hypercredits": {
+          used: Math.max(0, monthlyCredits - balance),
+          total: monthlyCredits,
+          remaining: balance,
+          remainingPercentage: Math.min(100, (balance / monthlyCredits) * 100),
+          resetAt: null,
+        },
+      },
+    };
+  } catch (error) {
+    return { message: `Charm error: ${error.message}` };
+  }
+}
+
 export async function getQoderUsage(accessToken, proxyOptions = null) {
   if (!accessToken) {
     return { message: "Qoder usage unavailable: no access token" };
