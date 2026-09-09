@@ -69,6 +69,15 @@ function stripStoredItemReferences(body) {
   });
 }
 
+// ponytail: strip `pattern` fields Codex rejects (Unicode property escapes \p{…}).
+// Upgrade path: remove when Codex supports ECMA regex with Unicode property classes.
+function stripUnsupportedPatterns(obj) {
+  if (!obj || typeof obj !== "object") return;
+  if (Array.isArray(obj)) { for (const v of obj) stripUnsupportedPatterns(v); return; }
+  if (typeof obj.pattern === "string" && /\\p\{/.test(obj.pattern)) delete obj.pattern;
+  for (const v of Object.values(obj)) stripUnsupportedPatterns(v);
+}
+
 // Flatten Chat-Completions tool shape into Responses flat format + filter unsupported tools
 function normalizeCodexTools(body) {
   if (!Array.isArray(body.tools)) return;
@@ -103,6 +112,7 @@ function normalizeCodexTools(body) {
     tool.name = name.slice(0, 128);
     if (description) tool.description = description;
     tool.parameters = makeOptionalToolFieldsNullable(parameters);
+    stripUnsupportedPatterns(tool.parameters);
     validNames.add(name);
     return true;
   });
