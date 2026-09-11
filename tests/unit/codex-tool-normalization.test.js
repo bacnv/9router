@@ -150,7 +150,7 @@ describe("CodexExecutor tool normalization", () => {
     expect(sourceParameters.properties.artifact.properties.name.pattern).toBe(unicodePattern);
   });
 
-  it("keeps escaped literal property text and schema identity when no strip is needed", () => {
+  it("keeps escaped literal property text without mutating the source schema", () => {
     const parameters = {
       type: "object",
       properties: {
@@ -160,8 +160,12 @@ describe("CodexExecutor tool normalization", () => {
     };
     const tools = normalizeTools([{ type: "function", name: "probe", parameters }]);
 
-    expect(tools[0].parameters).toBe(parameters);
-    expect(tools[0].parameters.properties.literal.pattern).toBe("^\\\\p{Cc}$");
+    expect(tools[0].parameters).not.toBe(parameters);
+    expect(tools[0].parameters.properties.literal).toEqual({
+      type: ["string", "null"],
+      pattern: "^\\\\p{Cc}$",
+    });
+    expect(parameters.properties.literal.type).toBe("string");
   });
 
   it("sanitizes nested namespace function schemas", () => {
