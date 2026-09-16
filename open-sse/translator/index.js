@@ -103,7 +103,14 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
       if (targetFormat !== FORMATS.OPENAI) {
         const fromOpenAI = requestRegistry.get(`${FORMATS.OPENAI}:${targetFormat}`);
         if (fromOpenAI) {
+          // Translators here rebuild the body and drop translator-only metadata.
+          // A Responses client reaching any non-OpenAI target pivots through
+          // this leg, so without it the response side stops recognising a
+          // custom tool (`exec`) and announces it as a function_call — which
+          // Codex aborts with "tool exec invoked with incompatible payload".
+          const { _customToolNames } = result;
           result = fromOpenAI(model, result, stream, credentials);
+          if (_customToolNames) result._customToolNames = _customToolNames;
         }
       }
     }

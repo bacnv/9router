@@ -91,6 +91,31 @@ describe("Codex Responses Lite custom tools → OpenAI Chat", () => {
     expect(out.tools.map((tool) => tool.function.name)).toEqual(["search", "exec"]);
     expect(out._customToolNames).toEqual(["exec"]);
   });
+
+  // Codex code mode wraps its callable tools in a namespace. Codex's router
+  // rejects a call named after the namespace ("unsupported call: functions")
+  // and only knows the bare child names, so the group must be flattened.
+  it("flattens a code-mode namespace into its callable children", () => {
+    const namespace = {
+      type: "namespace",
+      name: "functions",
+      description: "",
+      tools: [
+        EXEC_TOOL,
+        { type: "function", name: "wait", parameters: { type: "object", properties: {} } },
+      ],
+    };
+    const out = openaiResponsesToOpenAIRequest("glm-5.3-flash", {
+      input: [
+        { type: "additional_tools", role: "developer", tools: [namespace] },
+        { type: "message", role: "user", content: [{ type: "input_text", text: "Run pwd" }] },
+      ],
+      tool_choice: "auto",
+    }, true, null);
+
+    expect(out.tools.map((tool) => tool.function.name)).toEqual(["exec", "wait"]);
+    expect(out._customToolNames).toEqual(["exec"]);
+  });
 });
 
 describe("OpenAI Chat stream → Codex custom_tool_call", () => {
