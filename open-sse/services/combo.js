@@ -11,28 +11,6 @@ import { extractTextContent } from "../translator/formats/gemini.js";
 // stripped). Must be prioritized. Soft (e.g. search) only degrades a feature.
 const HARD_CAPS = new Set(["vision", "pdf", "audioInput", "videoInput"]);
 
-export function getComboCapabilities(models) {
-  if (!Array.isArray(models) || models.length === 0) return null;
-  const memberCaps = models.map((member) => {
-    const slash = typeof member === "string" ? member.indexOf("/") : -1;
-    return getCapabilitiesForModel(
-      slash > 0 ? member.slice(0, slash) : "",
-      slash > 0 ? member.slice(slash + 1) : member,
-    );
-  });
-  const result = {};
-  for (const key of Object.keys(memberCaps[0])) {
-    const values = memberCaps.map((caps) => caps[key]);
-    if (values.every((value) => typeof value === "boolean")) {
-      result[key] = values.every(Boolean);
-    } else if (values.every(Number.isFinite)) {
-      result[key] = Math.min(...values);
-    } else if (values.every((value) => value === values[0])) {
-      result[key] = values[0];
-    }
-  }
-  return result;
-}
 
 // Prefixes used when flattening tool turns into plain prose for panel models.
 const TOOL_CALL_PREFIX = "[Called tools: ";
