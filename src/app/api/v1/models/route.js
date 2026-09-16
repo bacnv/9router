@@ -18,6 +18,7 @@ import { resolveZedModels } from "open-sse/shared/zedAuth.js";
 import { updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { capabilitiesFromServiceKind, getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
+import { getComboCapabilities } from "open-sse/services/combo.js";
 
 // Per-provider live model resolvers. Each receives a connection record and
 // returns { models: [{ id, name? }, ...] } | null on failure.
@@ -310,6 +311,8 @@ export async function buildModelsList(kindFilter, options = {}) {
       object: "model",
       owned_by: "combo",
     };
+    const capabilities = getComboCapabilities(combo.models);
+    if (capabilities) entry.capabilities = capabilities;
     if (combo.kind === "webSearch" || combo.kind === "webFetch") {
       entry.kind = combo.kind;
     }
