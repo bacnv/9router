@@ -178,10 +178,15 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   // explicit `name` field and cannot be represented as Chat Completions function declarations.
   // Filter them out to avoid sending nameless functionDeclarations to downstream providers
   // such as Gemini, which strictly validates function names.
+  // Codex code mode declares its callable tools inside a `namespace` group
+  // ({ type: "namespace", name: "functions", tools: [...] }); the namespace
+  // itself is not callable — Codex rejects a call named after it with
+  // "unsupported call", and keeps only the bare child names in its router.
+  // Flatten it so `exec` / `wait` / `exec_command` survive as real tools.
   const responseTools = [
     ...(Array.isArray(body.tools) ? body.tools : []),
     ...additionalTools,
-  ];
+  ].flatMap((tool) => (tool?.type === "namespace" && Array.isArray(tool.tools) ? tool.tools : [tool]));
   if (responseTools.length > 0) {
     result.tools = responseTools
       .map(tool => {
