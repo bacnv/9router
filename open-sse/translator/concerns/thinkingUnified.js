@@ -18,6 +18,7 @@ const FORMAT_TO_NATIVE = {
   "gemini-cli": "gemini-budget",
   vertex: "gemini-budget",
   antigravity: "gemini-budget",
+  ollama: "ollama",
   kiro: "kiro",
   commandcode: "commandcode",
 };
@@ -91,6 +92,13 @@ export function extractThinking(body) {
     }
   }
 
+  // Ollama shape
+  if (body.think === false) return { mode: "none" };
+  if (body.think === true) return { mode: "auto" };
+  if (typeof body.think === "string" && body.think) {
+    return { mode: "level", level: body.think.toLowerCase() };
+  }
+
   // Qwen shape
   if (body.enable_thinking === false) return { mode: "none" };
   if (body.enable_thinking === true) {
@@ -112,6 +120,7 @@ function resolveFormat(targetFormat, model, provider) {
   if (targetFormat === "commandcode") return "commandcode";
   const providerFmt = provider ? PROVIDERS[provider]?.thinkingFormat : null;
   if (providerFmt) return providerFmt;
+  if (targetFormat === "ollama") return FORMAT_TO_NATIVE.ollama;
   const caps = getCapabilitiesForModel(provider, model);
   const isOpenAIWire = targetFormat === "openai" || targetFormat === "openai-responses";
   if (caps.thinkingFormat && !(isOpenAIWire && NATIVE_ONLY_FORMATS.has(caps.thinkingFormat))) {
@@ -222,6 +231,7 @@ function stripAll(body) {
   delete body.thinkingConfig;
   delete body.enable_thinking;
   delete body.thinking_budget;
+  delete body.think;
   delete body.output_config;
   if (body.generationConfig) delete body.generationConfig.thinkingConfig;
   if (body.request?.generationConfig) delete body.request.generationConfig.thinkingConfig;
@@ -305,6 +315,12 @@ function applyFormat(fmt, body, cfg, caps, supportedLevels, display) {
       // DeepSeek: low/medium→high, xhigh/max→max.
       const level = toLevel(eff);
       body.reasoning_effort = level === "xhigh" || level === "max" ? "max" : "high";
+      break;
+    }
+    case "ollama": {
+      if (none && canDisable) { body.think = false; break; }
+      const level = toLevel(eff);
+      body.think = level === "xhigh" ? "max" : level === "auto" ? true : level;
       break;
     }
     case "kimi": {
