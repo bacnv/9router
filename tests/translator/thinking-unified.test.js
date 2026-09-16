@@ -153,6 +153,11 @@ describe("applyThinking per provider format", () => {
     expect(out.thinking).toEqual({ type: "enabled" });
     expect(out.reasoning_effort).toBe(expected);
   });
+  it.each(["medium", "xhigh", "max"])("Charm GLM-5.3-Flash preserves Codex effort %s", (effort) => {
+    const out = apply("openai", "glm-5.3-flash", { reasoning_effort: effort }, "charm");
+    expect(out.reasoning_effort).toBe(effort);
+    expect(out.thinking).toBeUndefined();
+  });
   it("GLM-5.2 also gets reasoning_effort (supported from 5.2 onward)", () => {
     const out = apply("openai", "glm-5.2", { reasoning_effort: "low" }, "glm-cn");
     expect(out.reasoning_effort).toBe("low");
@@ -175,6 +180,13 @@ describe("applyThinking per provider format", () => {
     const out = apply("openai", "deepseek-v4-pro", { reasoning_effort: "low" }, "deepseek");
     expect(out.thinking).toEqual({ type: "enabled" });
     expect(out.reasoning_effort).toBe("high");
+  });
+  it("Ollama maps xhigh to its native max think level", () => {
+    const out = apply("ollama", "deepseek-v4.1-flash", { reasoning_effort: "xhigh" }, "ollama");
+    expect(out.think).toBe("max");
+    expect(out.thinking).toBeUndefined();
+    expect(out.reasoning_effort).toBeUndefined();
+    expect(extractThinking(out)).toEqual({ mode: "level", level: "max" });
   });
   it("Kimi on → reasoning_effort", () => {
     const out = apply("openai", "kimi-k2.6", { reasoning_effort: "high" }, "kimi");
