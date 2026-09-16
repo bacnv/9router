@@ -34,26 +34,6 @@ describe("OpenAI Chat stream → Responses: empty tool_calls arrays", () => {
     expect(events.indexOf(textDone[0])).toBe(events.indexOf(textDeltas[textDeltas.length - 1]) + 1);
   });
 
-  it("restores boolean tool arguments before emitting Responses events", () => {
-    const state = initState(FORMATS.OPENAI_RESPONSES);
-    state.toolSchemas = new Map([["exec", {
-      type: "object",
-      properties: { enabled: { type: "boolean" } },
-    }]]);
-    const chunks = [
-      { id: "cmb-test", choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: "call_1", type: "function", function: { name: "exec", arguments: "{\"enabled\":\"false\"}" } }] }, finish_reason: null }] },
-      { id: "cmb-test", choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] },
-    ];
-
-    const events = chunks.flatMap((chunk) => openaiToOpenAIResponsesResponse(chunk, state));
-    const argumentDeltas = events
-      .filter((event) => event.event === "response.function_call_arguments.delta")
-      .map((event) => event.data.delta)
-      .join("");
-
-    expect(JSON.parse(argumentDeltas)).toEqual({ enabled: false });
-  });
-
   it("still closes the message before a real tool call", () => {
     const state = initState(FORMATS.OPENAI_RESPONSES);
     const chunks = [

@@ -231,6 +231,14 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   }
   if (customToolNames.size > 0) result._customToolNames = [...customToolNames];
 
+  // Responses forces a named function as {type:"function",name}; Chat nests the name.
+  if (result.tool_choice?.type === "function" && result.tool_choice.name && !result.tool_choice.function) {
+    result.tool_choice = {
+      type: OPENAI_BLOCK.FUNCTION,
+      function: { name: result.tool_choice.name },
+    };
+  }
+
   // Cleanup Responses API specific fields
   // Map Responses-only max_output_tokens to Chat max_tokens (avoid leaking unknown field upstream)
   if (result.max_output_tokens !== undefined) {

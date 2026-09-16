@@ -18,6 +18,20 @@ const EXEC_TOOL = {
 };
 
 describe("Codex Responses Lite custom tools → OpenAI Chat", () => {
+  it("converts a forced Responses function choice to Chat format", () => {
+    const out = openaiResponsesToOpenAIRequest("glm-5.3-flash", {
+      input: [{ role: "user", content: [{ type: "input_text", text: "run" }] }],
+      tools: [{
+        type: "function",
+        name: "set_flag",
+        parameters: { type: "object", properties: {} },
+      }],
+      tool_choice: { type: "function", name: "set_flag" },
+    }, true, null);
+
+    expect(out.tool_choice).toEqual({ type: "function", function: { name: "set_flag" } });
+  });
+
   it("promotes additional_tools custom declarations into Chat tools", () => {
     const out = openaiResponsesToOpenAIRequest("cx/gpt-5.6-sol", {
       input: [

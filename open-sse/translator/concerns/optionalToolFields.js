@@ -32,54 +32,6 @@ export function makeOptionalToolFieldsNullable(schema) {
   return { ...schema, properties };
 }
 
-export function collectToolSchemas(body) {
-  const result = new Map();
-  for (const tool of body?.tools || []) {
-    const { name, schema } = toolSchema(tool);
-    if (name && schema) result.set(name, schema);
-  }
-  return result;
-}
-
-function schemaType(schema) {
-  const types = (Array.isArray(schema?.type) ? schema.type : [schema?.type])
-    .filter((type) => type && type !== "null");
-  return types.length === 1 ? types[0] : null;
-}
-
-function coerceValue(value, schema) {
-  const type = schemaType(schema);
-  if (type === "boolean" && typeof value === "string") {
-    if (value === "true") return true;
-    if (value === "false") return false;
-  }
-  if ((type === "number" || type === "integer") && typeof value === "string" && value.trim() !== "") {
-    const number = Number(value);
-    if (Number.isFinite(number) && (type !== "integer" || Number.isInteger(number))) return number;
-  }
-  if (type === "object" && value && typeof value === "object" && !Array.isArray(value)) {
-    const result = { ...value };
-    for (const [name, property] of Object.entries(schema.properties || {})) {
-      if (name in result) result[name] = coerceValue(result[name], property);
-    }
-    return result;
-  }
-  if (type === "array" && Array.isArray(value)) {
-    return value.map((item) => coerceValue(item, schema.items));
-  }
-  return value;
-}
-
-export function normalizeToolArgumentTypes(toolName, argumentsText, toolSchemas) {
-  const schema = toolSchemas?.get(toolName);
-  if (!schema || !argumentsText) return argumentsText;
-  try {
-    return JSON.stringify(coerceValue(JSON.parse(argumentsText), schema));
-  } catch {
-    return argumentsText;
-  }
-}
-
 export function collectOptionalToolFields(body) {
   const result = new Map();
   for (const tool of body?.tools || []) {
