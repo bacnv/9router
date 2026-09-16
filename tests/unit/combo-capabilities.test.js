@@ -13,11 +13,11 @@ vi.mock("@/lib/localDb", () => ({
 vi.mock("@/lib/disabledModelsDb", () => ({ getDisabledModels: vi.fn(async () => ({})) }));
 
 describe("getComboCapabilities", () => {
-  it("advertises capabilities shared by every combo member", () => {
+  it("advertises only shared tool support", () => {
     expect(getComboCapabilities([
       "codex/gpt-5.6-sol",
       "codex/gpt-5.5-codex",
-    ])).toMatchObject({ tools: true });
+    ])).toEqual({ tools: true });
   });
 
   it("does not advertise a capability missing from a fallback member", () => {
@@ -31,10 +31,12 @@ describe("getComboCapabilities", () => {
     const { buildModelsList } = await import("../../src/app/api/v1/models/route.js");
     const models = await buildModelsList(["llm"]);
 
-    expect(models.find((model) => model.id === "gpt-5.6-sol")).toMatchObject({
+    const combo = models.find((model) => model.id === "gpt-5.6-sol");
+    expect(combo).toMatchObject({
       owned_by: "combo",
       capabilities: { tools: true },
     });
+    expect(combo.capabilities).toEqual({ tools: true });
   });
 
   it("tries intermediate members and stops at the first success", async () => {
