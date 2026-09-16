@@ -5,6 +5,8 @@ import { FORMATS } from "../../open-sse/translator/formats.js";
 import { createSSETransformStreamWithLogger } from "../../open-sse/utils/stream.js";
 import {
   collectOptionalToolFields,
+  collectToolSchemas,
+  normalizeToolArgumentTypes,
   removeNullOptionalToolFields,
 } from "../../open-sse/translator/concerns/optionalToolFields.js";
 
@@ -132,6 +134,31 @@ describe("Codex optional tool arguments", () => {
     }]);
 
     expect(tool.parameters.properties.value).toEqual(schema);
+  });
+
+  it("restores primitive argument types from the client tool schema", () => {
+    const body = {
+      tools: [{
+        name: "exec",
+        input_schema: {
+          type: "object",
+          properties: {
+            enabled: { type: "boolean" },
+            retries: { type: "integer" },
+            ratio: { type: "number" },
+            label: { type: "string" },
+          },
+        },
+      }],
+    };
+    const schemas = collectToolSchemas(body);
+    const args = normalizeToolArgumentTypes(
+      "exec",
+      JSON.stringify({ enabled: "false", retries: "8", ratio: "0.5", label: "false" }),
+      schemas,
+    );
+
+    expect(JSON.parse(args)).toEqual({ enabled: false, retries: 8, ratio: 0.5, label: "false" });
   });
 
   it("preserves explicit values and client-declared nullable fields", () => {

@@ -4,7 +4,7 @@ import { trackPendingRequest, appendRequestLog } from "@/lib/usageDb.js";
 import { extractUsage, mergeUsage, hasValidUsage, estimateUsage, logUsage, addBufferToUsage, filterUsageForFormat, COLORS } from "./usageTracking.js";
 import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE } from "./streamHelpers.js";
 import { getOpenAIResponsesEventName, isOpenAIResponsesTerminalEvent, formatIncompleteOpenAIResponsesStreamFailure } from "./responsesStreamHelpers.js";
-import { collectOptionalToolFields } from "../translator/concerns/optionalToolFields.js";
+import { collectOptionalToolFields, collectToolSchemas } from "../translator/concerns/optionalToolFields.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
 
 import { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER } from "./sseConstants.js";
@@ -69,6 +69,7 @@ export function createSSEStream(options = {}) {
         model,
         sessionId: credentials?._clientSessionId || null,
         optionalToolFields: collectOptionalToolFields(body),
+        toolSchemas: collectToolSchemas(body),
       }
     : null;
 
