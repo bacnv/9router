@@ -276,14 +276,14 @@ export async function getCharmUsage(apiKey, proxyOptions = null) {
     return {
       plan: "Charm",
       quotas: {
-        "Balance (USD)": {
+        "Balance (Hypercredits)": {
           used: 0,
           total: balance,
           remaining: balance,
           remainingPercentage: balance > 0 ? 100 : 0,
           resetAt: null,
           isCreditBalance: true,
-          currency: "USD",
+          currency: "Hypercredits",
         },
       },
     };

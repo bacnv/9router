@@ -29,14 +29,14 @@ describe("Charm usage", () => {
     expect(result).toEqual({
       plan: "Charm",
       quotas: {
-        "Balance (USD)": {
+        "Balance (Hypercredits)": {
           used: 0,
           total: 75,
           remaining: 75,
           remainingPercentage: 100,
           resetAt: null,
           isCreditBalance: true,
-          currency: "USD",
+          currency: "Hypercredits",
         },
       },
     });
@@ -50,7 +50,7 @@ describe("Charm usage", () => {
     });
 
     const result = await getCharmUsage("fixture-credential");
-    expect(result.quotas["Balance (USD)"]).toMatchObject({
+    expect(result.quotas["Balance (Hypercredits)"]).toMatchObject({
       total: 0,
       remainingPercentage: 0,
       isCreditBalance: true,
