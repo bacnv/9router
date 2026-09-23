@@ -270,16 +270,20 @@ export async function getCharmUsage(apiKey, proxyOptions = null) {
       return { message: "Charm credits response did not contain a valid balance." };
     }
 
-    const monthlyCredits = 100;
+    // Credit-balance shape, matching getDeepseekUsage: `total` IS the balance
+    // (QuotaTable renders it), and isCreditBalance switches the row to currency
+    // display rather than a percentage bar.
     return {
       plan: "Charm",
       quotas: {
-        "Monthly Hypercredits": {
-          used: Math.max(0, monthlyCredits - balance),
-          total: monthlyCredits,
+        "Balance (USD)": {
+          used: 0,
+          total: balance,
           remaining: balance,
-          remainingPercentage: Math.min(100, (balance / monthlyCredits) * 100),
+          remainingPercentage: balance > 0 ? 100 : 0,
           resetAt: null,
+          isCreditBalance: true,
+          currency: "USD",
         },
       },
     };

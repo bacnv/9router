@@ -24,17 +24,36 @@ describe("Charm usage", () => {
       }),
       null,
     );
+    // Credit-balance shape: `total` carries the balance itself, and
+    // isCreditBalance tells QuotaTable to render currency, not a percentage bar.
     expect(result).toEqual({
       plan: "Charm",
       quotas: {
-        "Monthly Hypercredits": {
-          used: 25,
-          total: 100,
+        "Balance (USD)": {
+          used: 0,
+          total: 75,
           remaining: 75,
-          remainingPercentage: 75,
+          remainingPercentage: 100,
           resetAt: null,
+          isCreditBalance: true,
+          currency: "USD",
         },
       },
+    });
+  });
+
+  it("reports an empty balance as a spent credit, not a full one", async () => {
+    proxyAwareFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ balance: 0 }),
+    });
+
+    const result = await getCharmUsage("fixture-credential");
+    expect(result.quotas["Balance (USD)"]).toMatchObject({
+      total: 0,
+      remainingPercentage: 0,
+      isCreditBalance: true,
     });
   });
 
