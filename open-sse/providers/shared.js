@@ -83,6 +83,16 @@ export const KIMI_CODING_BASE_URL = "https://api.kimi.com/coding/v1/messages";
 // Default base for dynamic compat providers (openai-compatible-* / anthropic-compatible-*) when user gives no baseUrl
 export const OPENAI_COMPAT_BASE = "https://api.openai.com/v1";
 export const ANTHROPIC_COMPAT_BASE = "https://api.anthropic.com/v1";
+export const CUSTOM_EMBEDDING_PREFIX = "custom-embedding-";
+
+// Providers a user added by hand (/api/provider-nodes). No registry entry uses these
+// prefixes, so the prefix alone separates them from the built-in menu providers.
+export function isCustomProvider(provider) {
+  if (typeof provider !== "string") return false;
+  return provider.startsWith("openai-compatible-")
+    || provider.startsWith("anthropic-compatible-")
+    || provider.startsWith(CUSTOM_EMBEDDING_PREFIX);
+}
 
 // Official Antigravity IDE Desktop 2.11.0 fingerprint captured from macOS arm64.
 // Keep this static even when 9router runs on Linux: the provider profile is

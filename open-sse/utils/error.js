@@ -1,4 +1,10 @@
 import { ERROR_TYPES, DEFAULT_ERROR_MESSAGES } from "../config/errorConfig.js";
+import { isCustomProvider } from "../providers/shared.js";
+
+// Hand-added nodes (openai-compatible-* / anthropic-compatible-*) are arbitrary upstreams:
+// nothing bounds their error body, so one bad payload can flood the client transcript.
+// Registry providers are known and read in full.
+const MAX_CUSTOM_ERROR_BODY_BYTES = 64 * 1024;
 
 /**
  * Build OpenAI-compatible error response body
@@ -53,14 +59,40 @@ export async function writeStreamError(writer, statusCode, message) {
  * Parse upstream provider error response
  * @param {Response} response - Fetch response from provider
  * @param {object} [executor] - Optional executor with parseError() override for provider-specific parsing
+ * @param {string} [provider] - Provider id; a hand-added custom node gets its error body capped
  * @returns {Promise<{statusCode: number, message: string, resetsAtMs?: number}>}
  */
-export async function parseUpstreamError(response, executor = null) {
+export async function parseUpstreamError(response, executor = null, provider = null) {
+  const maxBytes = isCustomProvider(provider) ? MAX_CUSTOM_ERROR_BODY_BYTES : Infinity;
   let bodyText = "";
+  let hitLimit = false;
   try {
-    bodyText = await response.text();
+    const reader = response.body?.getReader();
+    if (reader) {
+      const decoder = new TextDecoder();
+      let bytesRead = 0;
+      while (bytesRead < maxBytes) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const room = maxBytes - bytesRead;
+        bodyText += decoder.decode(room >= value.byteLength ? value : value.subarray(0, room), { stream: true });
+        bytesRead += value.byteLength;
+        // At the cap without EOF we cannot tell "exactly at limit" from "more coming",
+        // and reading again risks waiting on an upstream that never closes.
+        if (bytesRead >= maxBytes) { hitLimit = true; break; }
+      }
+      if (hitLimit) reader.cancel().catch(() => {}); // fire-and-forget: cancel() may never settle
+      else bodyText += decoder.decode();
+    }
   } catch {
     bodyText = "";
+  }
+
+  if (hitLimit) {
+    return {
+      statusCode: response.status,
+      message: `Custom provider error response exceeded 64 KiB and was truncated (HTTP ${response.status})`,
+    };
   }
 
   // Let executor-specific parser extract provider-specific fields (e.g. codex resetsAtMs)

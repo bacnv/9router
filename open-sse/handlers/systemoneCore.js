@@ -64,7 +64,7 @@ export async function handleSystemoneCore({
   }
 
   if (!providerResponse.ok) {
-    const { statusCode, message } = await parseUpstreamError(providerResponse);
+    const { statusCode, message } = await parseUpstreamError(providerResponse, null, provider);
     const errMsg = formatProviderError(new Error(message), provider, model, statusCode);
     log?.debug?.("SYSTEMONE", `Provider error: ${errMsg}`);
     return createErrorResult(statusCode, errMsg);
