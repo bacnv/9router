@@ -1,5 +1,8 @@
-// Build a base64 data URI from mime + base64 payload
+// Build a base64 data URI from mime + base64 payload.
+// Idempotent: some clients send an already-complete data URI where the spec wants raw
+// base64, and ":" is not in the base64 alphabet, so a raw payload can never look like one.
 export function encodeDataUri(mimeType, base64) {
+  if (typeof base64 === "string" && base64.startsWith("data:")) return base64;
   return `data:${mimeType};base64,${base64}`;
 }
 
