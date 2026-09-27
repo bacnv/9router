@@ -133,6 +133,10 @@ export function detectRequiredCapabilities(body) {
     }
     // gemini parts: inlineData/fileData carry a mime
     addByMime(b.inlineData?.mimeType || b.fileData?.mimeType);
+    // A tool result nests its own blocks (Claude tool_result.content). A tool
+    // that returns a screenshot puts the image there, so the scan has to
+    // descend or the combo stays on a text-only member that rejects the data URI.
+    scanContent(b.content);
   };
 
   const scanContent = (content) => {

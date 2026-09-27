@@ -51,6 +51,13 @@ function filterBlocks(blocks, capOf, caps, removed, isLast) {
   for (const block of blocks) {
     const cap = capOf(block);
     if (cap && caps[cap] === false) { removed.add(cap); continue; }
+    // A tool result nests its own blocks (Claude tool_result.content) — media a
+    // tool returned must be stripped here too, or the data URI reaches an
+    // upstream that cannot read it. A separate Set keeps the placeholder next
+    // to what it replaces instead of adding a second copy at the top.
+    if (Array.isArray(block?.content)) {
+      block.content = filterBlocks(block.content, capOf, caps, new Set(), isLast);
+    }
     out.push(block);
   }
   for (const cap of removed) out.push({ type: "text", text: ph(cap, isLast) });
