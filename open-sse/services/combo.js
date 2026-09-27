@@ -11,6 +11,9 @@ import { extractTextContent } from "../translator/formats/gemini.js";
 // stripped). Must be prioritized. Soft (e.g. search) only degrades a feature.
 const HARD_CAPS = new Set(["vision", "pdf", "audioInput", "videoInput"]);
 
+// Same ceiling the other nested walkers in this repo use (capabilities.js, codex.js).
+const MAX_NEST_DEPTH = 6;
+
 
 // Prefixes used when flattening tool turns into plain prose for panel models.
 const TOOL_CALL_PREFIX = "[Called tools: ";
@@ -115,7 +118,7 @@ export function detectRequiredCapabilities(body) {
     else if (mime.startsWith("video/")) required.add("videoInput");
   };
 
-  const scanBlock = (b) => {
+  const scanBlock = (b, depth = 0) => {
     if (!b || typeof b !== "object") return;
     const t = b.type;
     if (t === "image_url" || t === "image" || t === "input_image") required.add("vision");
@@ -133,10 +136,15 @@ export function detectRequiredCapabilities(body) {
     }
     // gemini parts: inlineData/fileData carry a mime
     addByMime(b.inlineData?.mimeType || b.fileData?.mimeType);
+    // A tool result nests its own blocks (Claude tool_result.content). A tool
+    // that returns a screenshot puts the image there, so the scan has to
+    // descend or the combo stays on a text-only member that rejects the data URI.
+    // Bounded: a client can nest arbitrarily deep and JSON survives transport.
+    if (depth < MAX_NEST_DEPTH) scanContent(b.content, depth + 1);
   };
 
-  const scanContent = (content) => {
-    if (Array.isArray(content)) for (const b of content) scanBlock(b);
+  const scanContent = (content, depth = 0) => {
+    if (Array.isArray(content)) for (const b of content) scanBlock(b, depth);
   };
 
   const scanMessage = (m) => {

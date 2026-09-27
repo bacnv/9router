@@ -3,6 +3,9 @@
 // media with a short text placeholder so messages never become empty.
 import { FORMATS } from "../formats.js";
 
+// Same ceiling the other nested walkers in this repo use (capabilities.js, codex.js).
+const MAX_NEST_DEPTH = 6;
+
 // Placeholder text inserted where a media block was removed.
 // Current turn: explain the active model can't read what the user just sent.
 const PLACEHOLDER_CURRENT = {
@@ -46,11 +49,20 @@ function capForClaudeBlock(block) {
 
 // Filter an array of content blocks; drop unsupported, inject one placeholder per kind.
 // isLast = block belongs to the current user turn (picks the explanatory placeholder).
-function filterBlocks(blocks, capOf, caps, removed, isLast) {
+// depth bounds the descent into nested tool results — a body can nest arbitrarily
+// (a JSON-encoded one survives transport), and unbounded recursion is a stack overflow.
+function filterBlocks(blocks, capOf, caps, removed, isLast, depth = 0) {
   const out = [];
   for (const block of blocks) {
     const cap = capOf(block);
     if (cap && caps[cap] === false) { removed.add(cap); continue; }
+    // A tool result nests its own blocks (Claude tool_result.content) — media a
+    // tool returned must be stripped here too, or the data URI reaches an
+    // upstream that cannot read it. A separate Set keeps the placeholder next
+    // to what it replaces instead of adding a second copy at the top.
+    if (depth < MAX_NEST_DEPTH && Array.isArray(block?.content)) {
+      block.content = filterBlocks(block.content, capOf, caps, new Set(), isLast, depth + 1);
+    }
     out.push(block);
   }
   for (const cap of removed) out.push({ type: "text", text: ph(cap, isLast) });
