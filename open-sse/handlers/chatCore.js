@@ -28,6 +28,7 @@ import { compressMessages, formatRtkLog } from "../rtk/index.js";
 import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadroomPhantomSavings } from "../rtk/headroom.js";
 import { compressWithPxpipe } from "../rtk/pxpipe.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
+import { isCustomProvider } from "../providers/shared.js";
 import { stripUnsupportedModalities } from "../translator/concerns/modality.js";
 import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
 import { defaultClaudeToolType, shouldDefaultClaudeToolType } from "../translator/concerns/toolCall.js";
@@ -170,12 +171,22 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   if (credentials) credentials.rawHeaders = clientRawRequest?.headers || {};
 
   // Auto-strip media blocks the model can't read (vision/audio/pdf) before translation.
-  if (!passthrough) {
+  // A hand-added node is not native to the CLI talking to it even when its id reads
+  // anthropic-compatible, so the lossless path must strip too — an image the upstream
+  // cannot read is forwarded, and its 400 echoes the whole payload back. Registry
+  // providers keep the skip.
+  const customNodePassthrough = passthrough && isCustomProvider(provider);
+  if (!passthrough || customNodePassthrough) {
     const caps = getCapabilitiesForModel(provider, model);
-    if (stripUnsupportedModalities(body, sourceFormat, caps)) {
+    // Vision only on the lossless path: the capability table marks pdf false even for
+    // endpoints that do read documents, and a node that can read them must keep them.
+    const stripCaps = customNodePassthrough ? { ...caps, pdf: true, audioInput: true } : caps;
+    if (stripUnsupportedModalities(body, sourceFormat, stripCaps)) {
       log?.debug?.("MODALITY", `stripped unsupported media for ${provider}/${model}`);
     }
-    // Convert remote image URLs to base64 for targets that can't fetch URLs.
+  }
+  // Convert remote image URLs to base64 for targets that can't fetch URLs.
+  if (!passthrough) {
     try {
       const n = await prefetchRemoteImages(body, sourceFormat, targetFormat, { signal: undefined });
       if (n > 0) log?.debug?.("MODALITY", `prefetched ${n} remote image(s) for ${targetFormat}`);

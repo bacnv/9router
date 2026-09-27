@@ -47,6 +47,11 @@ function capForClaudeBlock(block) {
   return null;
 }
 
+// Combo members share one source body, so every object this module rewrites is
+// copied first: a strip for a text-only member must not remove media from a
+// later member that can read it.
+const fresh = (arr) => arr.map((x) => (x && typeof x === "object" ? { ...x } : x));
+
 // Filter an array of content blocks; drop unsupported, inject one placeholder per kind.
 // isLast = block belongs to the current user turn (picks the explanatory placeholder).
 // depth bounds the descent into nested tool results — a body can nest arbitrarily
@@ -61,7 +66,8 @@ function filterBlocks(blocks, capOf, caps, removed, isLast, depth = 0) {
     // upstream that cannot read it. A separate Set keeps the placeholder next
     // to what it replaces instead of adding a second copy at the top.
     if (depth < MAX_NEST_DEPTH && Array.isArray(block?.content)) {
-      block.content = filterBlocks(block.content, capOf, caps, new Set(), isLast, depth + 1);
+      out.push({ ...block, content: filterBlocks(block.content, capOf, caps, new Set(), isLast, depth + 1) });
+      continue;
     }
     out.push(block);
   }
@@ -70,37 +76,45 @@ function filterBlocks(blocks, capOf, caps, removed, isLast, depth = 0) {
 }
 
 // OpenAI / OpenAI-compatible chat messages[].content[].
+// Rewrites body.messages with fresh entries so a shared source body is not mutated.
 function stripOpenAI(body, caps) {
   if (!Array.isArray(body.messages)) return;
   const last = body.messages.length - 1;
-  body.messages.forEach((msg, i) => {
+  const messages = body.messages.map((msg, i) => {
+    if (!msg || typeof msg !== "object") return msg;
+    const out = { ...msg };
     if (caps.vision === false) {
-      if (Array.isArray(msg.images)) delete msg.images;
-      if (Array.isArray(msg.experimental_attachments)) {
-        msg.experimental_attachments = msg.experimental_attachments.filter(
+      if (Array.isArray(out.images)) delete out.images;
+      if (Array.isArray(out.experimental_attachments)) {
+        out.experimental_attachments = out.experimental_attachments.filter(
           (a) => !(a?.contentType?.startsWith("image/") || (typeof a?.url === "string" && a.url.startsWith("data:image/")))
         );
       }
-      if (Array.isArray(msg.attachments)) {
-        msg.attachments = msg.attachments.filter(
+      if (Array.isArray(out.attachments)) {
+        out.attachments = out.attachments.filter(
           (a) => !(a?.contentType?.startsWith("image/") || (typeof a?.url === "string" && a.url.startsWith("data:image/")))
         );
       }
     }
-    if (!Array.isArray(msg.content)) return;
+    if (!Array.isArray(out.content)) return out;
     const removed = new Set();
-    msg.content = filterBlocks(msg.content, capForOpenAIBlock, caps, removed, i === last);
+    out.content = filterBlocks(fresh(out.content), capForOpenAIBlock, caps, removed, i === last);
+    return out;
   });
+  body.messages = messages;
 }
 
 // Claude messages[].content[].
 function stripClaude(body, caps) {
   if (!Array.isArray(body.messages)) return;
   const last = body.messages.length - 1;
-  body.messages.forEach((msg, i) => {
-    if (!Array.isArray(msg.content)) return;
+  body.messages = body.messages.map((msg, i) => {
+    if (!msg || typeof msg !== "object") return msg;
+    const out = { ...msg };
+    if (!Array.isArray(out.content)) return out;
     const removed = new Set();
-    msg.content = filterBlocks(msg.content, capForClaudeBlock, caps, removed, i === last);
+    out.content = filterBlocks(fresh(out.content), capForClaudeBlock, caps, removed, i === last);
+    return out;
   });
 }
 
@@ -108,37 +122,46 @@ function stripClaude(body, caps) {
 function stripResponses(body, caps) {
   if (!Array.isArray(body.input)) return;
   const last = body.input.length - 1;
-  body.input.forEach((item, i) => {
-    if (!Array.isArray(item.content)) return;
+  body.input = body.input.map((item, i) => {
+    if (!item || typeof item !== "object") return item;
+    const out = { ...item };
+    if (!Array.isArray(out.content)) return out;
     const removed = new Set();
-    item.content = item.content.filter((b) => {
+    out.content = out.content.filter((b) => {
       const cap = b?.type === "input_image" ? "vision" : b?.type === "input_file" ? "pdf" : null;
       if (cap && caps[cap] === false) { removed.add(cap); return false; }
       return true;
     });
-    for (const cap of removed) item.content.push({ type: "input_text", text: ph(cap, i === last) });
+    for (const cap of removed) out.content.push({ type: "input_text", text: ph(cap, i === last) });
+    return out;
   });
 }
 
 // Gemini / gemini-cli contents[].parts[] (inlineData / fileData by mime).
 function stripGeminiParts(contents, caps) {
-  if (!Array.isArray(contents)) return;
+  if (!Array.isArray(contents)) return null;
   const last = contents.length - 1;
-  contents.forEach((c, i) => {
-    if (!Array.isArray(c.parts)) return;
+  return contents.map((c, i) => {
+    if (!c || typeof c !== "object") return c;
+    const out = { ...c };
+    if (!Array.isArray(out.parts)) return out;
     const removed = new Set();
-    c.parts = c.parts.filter((p) => {
+    out.parts = out.parts.filter((p) => {
       const mime = p?.inlineData?.mimeType || p?.fileData?.mimeType;
       const cap = capForMime(mime);
       if (cap && caps[cap] === false) { removed.add(cap); return false; }
       return true;
     });
-    for (const cap of removed) c.parts.push({ text: ph(cap, i === last) });
+    for (const cap of removed) out.parts.push({ text: ph(cap, i === last) });
+    return out;
   });
 }
 
 /**
- * Remove media blocks the model can't read, in-place on the source-format body.
+ * Remove media blocks the model can't read, from the source-format body.
+ * Copies the arrays/objects it rewrites (body itself is not replaced), so a
+ * source body shared between combo members keeps its media for the members
+ * that can read it.
  * @param {object} body - request body (source format)
  * @param {string} sourceFormat - one of FORMATS
  * @param {object} caps - capabilities from getCapabilitiesForModel
@@ -168,10 +191,12 @@ export function stripUnsupportedModalities(body, sourceFormat, caps) {
     case FORMATS.GEMINI:
     case FORMATS.GEMINI_CLI:
     case FORMATS.VERTEX:
-      stripGeminiParts(body.contents, caps);
+      if (Array.isArray(body.contents)) body.contents = stripGeminiParts(body.contents, caps);
       break;
     case FORMATS.ANTIGRAVITY:
-      stripGeminiParts(body?.request?.contents, caps);
+      if (Array.isArray(body?.request?.contents)) {
+        body.request = { ...body.request, contents: stripGeminiParts(body.request.contents, caps) };
+      }
       break;
     default:
       stripOpenAI(body, caps);
