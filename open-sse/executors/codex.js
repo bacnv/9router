@@ -146,6 +146,9 @@ function resolveCacheSessionId(body, credentials) {
 
 function normalizeReasoningEffort(model, value) {
   const supportedLevels = getThinkingLevels("codex", model);
+  // A model pinned to one level (e.g. gpt-6-luna → ["max"]) takes that level no matter
+  // what the client asked for, so an unsupported effort can never reach the upstream.
+  if (supportedLevels?.length === 1) return supportedLevels[0];
   if (supportedLevels?.includes(value)) return value;
   if (isCodexResponsesLiteModel(model) && (value === "none" || value === "minimal")) return "low";
   if (value === "ultra" && supportedLevels?.includes("max")) return "max";

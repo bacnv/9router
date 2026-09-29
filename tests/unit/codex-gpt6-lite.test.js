@@ -11,7 +11,7 @@ const credentials = { connectionId: "fixture", accessToken: "fixture-token" };
 afterEach(() => vi.restoreAllMocks());
 
 describe("Codex GPT-6 Sol/Luna transport", () => {
-  it.each(["gpt-6-sol", "gpt-6-luna"])("lists %s with Codex capabilities", (model) => {
+  it.each(["gpt-6-sol"])("lists %s with Codex capabilities", (model) => {
     const entry = getModelsByProviderId("codex").find((item) => item.id === model);
     expect(entry?.responsesLite).toBe(true);
     expect(entry?.thinkingLevels).toEqual(["low", "medium", "high", "xhigh", "max"]);
@@ -31,11 +31,11 @@ describe("Codex GPT-6 Sol/Luna transport", () => {
       { type: "message", id: "msg_native", role: "developer", content: [{ type: "input_text", text: "Native instructions" }] },
       { type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] },
     ];
-    const body = executor.transformRequest("gpt-6-luna", {
-      model: "gpt-6-luna", input: structuredClone(input), instructions: "", tools: null, parallel_tool_calls: false,
+    const body = executor.transformRequest("gpt-6-sol", {
+      model: "gpt-6-sol", input: structuredClone(input), instructions: "", tools: null, parallel_tool_calls: false,
       reasoning: { effort: "high", context: "all_turns" },
     }, true, credentials);
-    const headers = executor.buildHeaders(credentials, true, null, "gpt-6-luna");
+    const headers = executor.buildHeaders(credentials, true, null, "gpt-6-sol");
 
     expect(headers["x-openai-internal-codex-responses-lite"]).toBe("true");
     expect(body.instructions).toBe("");
@@ -62,8 +62,8 @@ describe("Codex GPT-6 Sol/Luna transport", () => {
   });
 
   it("clamps unsupported GPT-6 reasoning values to Codex's lowest supported level", () => {
-    const body = new CodexExecutor().transformRequest("gpt-6-luna", {
-      model: "gpt-6-luna", input: "hello", reasoning: { effort: "none" },
+    const body = new CodexExecutor().transformRequest("gpt-6-sol", {
+      model: "gpt-6-sol", input: "hello", reasoning: { effort: "none" },
     }, true, credentials);
 
     expect(body.reasoning.effort).toBe("low");
@@ -102,6 +102,55 @@ describe("Codex GPT-6 Sol/Luna transport", () => {
     expect(executor.buildHeaders(credentials, true, null, "gpt-5.5")["x-openai-internal-codex-responses-lite"]).toBeUndefined();
     expect(getThinkingLevels("codex", "gpt-6-astra")).toContain("none");
     expect(executor.buildHeaders(credentials, true, null, "gpt-6-astra")["x-openai-internal-codex-responses-lite"]).toBeUndefined();
+  });
+});
+
+// gpt-6-luna is pinned to a single level: its catalog only offers "max" as a usable
+// effort here, so every incoming value collapses to it rather than being passed through.
+describe("Codex GPT-6 Luna single level", () => {
+  it("advertises max as its only thinking level", () => {
+    const entry = getModelsByProviderId("codex").find((item) => item.id === "gpt-6-luna");
+
+    expect(entry?.responsesLite).toBe(true);
+    expect(getThinkingLevels("codex", "gpt-6-luna")).toEqual(["max"]);
+  });
+
+  it.each(["low", "medium", "high", "xhigh", "max", "ultra", "none", "bogus"])(
+    "coerces a requested effort of %s to max",
+    (effort) => {
+      const body = new CodexExecutor().transformRequest("gpt-6-luna", {
+        model: "gpt-6-luna", input: "hello", reasoning: { effort },
+      }, true, credentials);
+
+      expect(body.reasoning.effort).toBe("max");
+    },
+  );
+
+  it("defaults to max when no effort is requested", () => {
+    const body = new CodexExecutor().transformRequest("gpt-6-luna", {
+      model: "gpt-6-luna", input: "hello",
+    }, true, credentials);
+
+    expect(body.reasoning.effort).toBe("max");
+  });
+
+  it("keeps the responses-lite shape while pinned to max", () => {
+    const body = new CodexExecutor().transformRequest("gpt-6-luna", {
+      model: "gpt-6-luna", input: "hello", instructions: "Do the task", reasoning: { effort: "low" },
+    }, true, credentials);
+
+    expect(body.instructions).toBe("");
+    expect(body.tools).toBeNull();
+    expect(body.input[0].type).toBe("additional_tools");
+    expect(body.reasoning).toEqual({ effort: "max", context: "all_turns" });
+  });
+
+  it("does not pin the same model id on other providers", () => {
+    const body = new CodexExecutor().transformRequest("gpt-6-sol", {
+      model: "gpt-6-sol", input: "hello", reasoning: { effort: "low" },
+    }, true, credentials);
+
+    expect(body.reasoning.effort).toBe("low");
   });
 });
 
