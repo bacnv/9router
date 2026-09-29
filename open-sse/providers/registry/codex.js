@@ -53,8 +53,9 @@ export default {
   },
   models: [
     // Codex 0.159.1's catalog ranks this first (priority 1), so it leads the list.
-    // Its levels differ from the other gpt-6 arms: it accepts "ultra" but not "none"/"minimal".
-    { id: "gpt-6.1-sol", name: "GPT 6.1 Sol", responsesLite: true, thinkingLevels: ["low", "medium", "high", "xhigh", "max", "ultra"] },
+    // The catalog also advertises "ultra", but that level auto-delegates to subagents —
+    // a transport the gateway does not carry — so it stops at "max" like its siblings.
+    { id: "gpt-6.1-sol", name: "GPT 6.1 Sol", responsesLite: true, thinkingLevels: GPT_6_LITE_THINKING_LEVELS },
     { id: "gpt-6-astra", name: "GPT 6.0 Astra" },
     { id: "gpt-6-sol", name: "GPT 6.0 Sol", responsesLite: true, thinkingLevels: GPT_6_LITE_THINKING_LEVELS },
     { id: "gpt-6-luna", name: "GPT 6.0 Luna", responsesLite: true, thinkingLevels: GPT_6_LITE_THINKING_LEVELS },

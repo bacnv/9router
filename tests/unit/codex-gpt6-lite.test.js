@@ -105,24 +105,25 @@ describe("Codex GPT-6 Sol/Luna transport", () => {
   });
 });
 
-// Codex 0.159.1's embedded catalog lists gpt-6.1-sol as visibility "list" with priority 1,
-// use_responses_lite true and reasoning levels low..ultra. Its own levels differ from the
-// other gpt-6 arms: it accepts "ultra", and does not offer "none"/"minimal".
+// Codex 0.159.1's embedded catalog lists gpt-6.1-sol as visibility "list" with priority 1
+// and use_responses_lite true. Its catalog also advertises "ultra", but ultra means
+// automatic task delegation — the gateway does not carry that, so the list stops at "max"
+// and normalizeReasoningEffort downgrades an incoming "ultra" to it.
 describe("Codex GPT-6.1 Sol", () => {
-  it("lists gpt-6.1-sol with Responses Lite and its own reasoning levels", () => {
+  it("lists gpt-6.1-sol with Responses Lite and the shared lite reasoning levels", () => {
     const entry = getModelsByProviderId("codex").find((item) => item.id === "gpt-6.1-sol");
 
     expect(entry?.responsesLite).toBe(true);
-    expect(entry?.thinkingLevels).toEqual(["low", "medium", "high", "xhigh", "max", "ultra"]);
-    expect(getThinkingLevels("codex", "gpt-6.1-sol")).toEqual(["low", "medium", "high", "xhigh", "max", "ultra"]);
+    expect(entry?.thinkingLevels).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    expect(getThinkingLevels("codex", "gpt-6.1-sol")).toEqual(["low", "medium", "high", "xhigh", "max"]);
   });
 
-  it("leaves the advertised effort untouched, including ultra", () => {
+  it("falls back to max when ultra is requested", () => {
     const body = new CodexExecutor().transformRequest("gpt-6.1-sol", {
       model: "gpt-6.1-sol", input: "hello", reasoning: { effort: "ultra" },
     }, true, credentials);
 
-    expect(body.reasoning.effort).toBe("ultra");
+    expect(body.reasoning.effort).toBe("max");
   });
 
   it("sends the Responses Lite shape for gpt-6.1-sol", async () => {
