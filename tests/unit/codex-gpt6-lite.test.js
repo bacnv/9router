@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CodexExecutor } from "../../open-sse/executors/codex.js";
+import { CODEX_CLI_VERSION } from "../../open-sse/config/appConstants.js";
 import { getModelsByProviderId } from "../../open-sse/config/providerModels.js";
 import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.js";
 import { getThinkingLevels } from "../../open-sse/providers/thinkingLevels.js";
@@ -84,7 +85,7 @@ describe("Codex GPT-6 Sol/Luna transport", () => {
     const body = JSON.parse(options.body);
     expect(url).toBe("https://chatgpt.com/backend-api/codex/responses");
     expect(options.headers["x-openai-internal-codex-responses-lite"]).toBe("true");
-    expect(options.headers.version).toBe("0.155.0");
+    expect(options.headers.version).toBe(CODEX_CLI_VERSION);
     expect(body.model).toBe("gpt-6-luna");
     expect(body.instructions).toBe("");
     expect(body.input[0].type).toBe("additional_tools");
@@ -101,5 +102,44 @@ describe("Codex GPT-6 Sol/Luna transport", () => {
     expect(executor.buildHeaders(credentials, true, null, "gpt-5.5")["x-openai-internal-codex-responses-lite"]).toBeUndefined();
     expect(getThinkingLevels("codex", "gpt-6-astra")).toContain("none");
     expect(executor.buildHeaders(credentials, true, null, "gpt-6-astra")["x-openai-internal-codex-responses-lite"]).toBeUndefined();
+  });
+});
+
+// Codex 0.159.1's embedded catalog lists gpt-6.1-sol as visibility "list" with priority 1,
+// use_responses_lite true and reasoning levels low..ultra. Its own levels differ from the
+// other gpt-6 arms: it accepts "ultra", and does not offer "none"/"minimal".
+describe("Codex GPT-6.1 Sol", () => {
+  it("lists gpt-6.1-sol with Responses Lite and its own reasoning levels", () => {
+    const entry = getModelsByProviderId("codex").find((item) => item.id === "gpt-6.1-sol");
+
+    expect(entry?.responsesLite).toBe(true);
+    expect(entry?.thinkingLevels).toEqual(["low", "medium", "high", "xhigh", "max", "ultra"]);
+    expect(getThinkingLevels("codex", "gpt-6.1-sol")).toEqual(["low", "medium", "high", "xhigh", "max", "ultra"]);
+  });
+
+  it("leaves the advertised effort untouched, including ultra", () => {
+    const body = new CodexExecutor().transformRequest("gpt-6.1-sol", {
+      model: "gpt-6.1-sol", input: "hello", reasoning: { effort: "ultra" },
+    }, true, credentials);
+
+    expect(body.reasoning.effort).toBe("ultra");
+  });
+
+  it("sends the Responses Lite shape for gpt-6.1-sol", async () => {
+    const fetchMock = vi.spyOn(proxyFetchModule, "proxyAwareFetch").mockResolvedValue({
+      ok: true, status: 200, headers: new Map(),
+    });
+    await new CodexExecutor().execute({
+      model: "gpt-6.1-sol",
+      body: { model: "gpt-6.1-sol", input: "hello", instructions: "Do the task" },
+      stream: true,
+      credentials,
+    });
+
+    const [, options] = fetchMock.mock.calls[0];
+    const body = JSON.parse(options.body);
+    expect(options.headers["x-openai-internal-codex-responses-lite"]).toBe("true");
+    expect(options.headers.version).toBe(CODEX_CLI_VERSION);
+    expect(body.input[0].type).toBe("additional_tools");
   });
 });
