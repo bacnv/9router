@@ -184,6 +184,24 @@ export const MODEL_PRICING = {
  * Keyed by provider alias (cc, cx, gc, gh, ...) or provider id (openai, anthropic, ...).
  */
 export const PROVIDER_PRICING = {
+  // Cloudflare Workers AI — rates from developers.cloudflare.com/workers-ai/platform/pricing.
+  // Neuron rates converted to USD at $0.011/1,000 neurons. Without these, cf requests
+  // record cost 0 and the daily free-neuron guard (src/lib/cloudflareFreeTier.js) reads
+  // an empty ledger. Clef is input-only: no output rate is published.
+  "cloudflare-ai": {
+    "@cf/cloudflare/clef":                        { input: 0.240, output: 0 },
+    "@cf/cloudflare/clef-flash":                  { input: 0.090, output: 0 },
+    "@cf/meta/llama-3.2-1b-instruct":             { input: 0.027, output: 0.201 },
+    "@cf/meta/llama-3.1-8b-instruct-fp8-fast":    { input: 0.282, output: 0.827 },
+    "@cf/meta/llama-3.3-70b-instruct-fp8-fast":   { input: 0.293, output: 2.253 },
+    "@cf/mistralai/mistral-small-3.1-24b-instruct": { input: 0.351, output: 0.555 },
+    "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b": { input: 0.497, output: 4.881 },
+    "@cf/moonshotai/kimi-k2.5":                   { input: 0.600, output: 3.000, cached: 0.100 },
+    "@cf/moonshotai/kimi-k2.6":                   { input: 0.950, output: 4.000, cached: 0.160 },
+    "@cf/zai-org/glm-4.7-flash":                  { input: 0.060, output: 0.400 },
+    "@cf/qwen/qwq-32b":                           { input: 0.660, output: 1.000 },
+    "@cf/qwen/qwen2.5-coder-32b-instruct":        { input: 0.660, output: 1.000 },
+  },
   // GitHub Copilot (gh) — explicit override, matches canonical gpt-5.3-codex rate
   gh: {
     "gpt-5.3-codex": { input: 1.75, output: 14.00, cached: 0.175, reasoning: 14.00, cache_creation: 1.75 },

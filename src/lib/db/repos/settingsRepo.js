@@ -62,6 +62,9 @@ const DEFAULT_SETTINGS = {
   pxpipeAutoInstall: true,
   pxpipeMinChars: 25000,
   pxpipeTimeoutMs: 15000,
+  // Workers Paid bills past the daily 10,000 free neurons instead of stopping.
+  // When on, connections that spent today's free allocation are skipped until 00:00 UTC.
+  cloudflareFreeOnly: false,
   // Per-provider user header overrides applied at dispatch: { [providerId]: { headers: {..} } }
   providerOverrides: {},
 };

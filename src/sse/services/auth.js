@@ -4,6 +4,8 @@ import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLock
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
 import { getAntigravityQuotaCache } from "./antigravityQuota.js";
+import { getExhaustedConnections, nextUtcReset } from "@/lib/cloudflareFreeTier.js";
+import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 
 // Mutex to prevent race conditions during account selection
@@ -82,10 +84,20 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     const isAntigravity = providerId === "antigravity";
     const antigravityQuotaCache = isAntigravity && model ? getAntigravityQuotaCache() : null;
 
+    // Workers Paid keeps serving past the daily free neuron allocation and bills for it.
+    // When the cap is on, drop connections that have spent today's free allowance.
+    const freeTierExhausted = providerId === "cloudflare-ai"
+      ? await getExhaustedConnections(connections)
+      : null;
+
     // Filter out model-locked, excluded, and Antigravity quota-exhausted connections.
     const availableConnections = connections.filter(c => {
       if (excludeSet.has(c.id)) return false;
       if (isModelLockActive(c, model)) return false;
+      if (freeTierExhausted?.has(c.id)) {
+        log.info("CF_FREE", `${providerId} | ${c.id?.slice(0, 8)} | free neuron allocation spent — skip until 00:00 UTC`);
+        return false;
+      }
       const enabled = c.providerSpecificData?.enabledModels;
       if (providerId === "codex" && Array.isArray(enabled) && enabled.length && requestedModel && !enabled.includes(requestedModel)) return false;
       // Antigravity: skip if live quota exhausted for this model
@@ -111,6 +123,19 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     });
 
     if (availableConnections.length === 0) {
+      // Free-tier cap hit: report it as a reset, not as a missing credential.
+      if (freeTierExhausted?.size === connections.length) {
+        const resetAt = nextUtcReset();
+        log.warn("AUTH", `${provider} | all ${connections.length} accounts at the free neuron cap (resets ${resetAt})`);
+        return {
+          allRateLimited: true,
+          retryAfter: resetAt,
+          retryAfterHuman: formatRetryAfter(resetAt),
+          lastError: "Cloudflare free neuron allocation spent for today; resets at 00:00 UTC",
+          lastErrorCode: HTTP_STATUS.SERVICE_UNAVAILABLE,
+        };
+      }
+
       // Find earliest persistent lock or lazy Antigravity quota-cache reset for retry timing.
       const lockedConns = connections.filter(c => isModelLockActive(c, model));
       const expiries = lockedConns.map(c => getEarliestModelLockUntil(c)).filter(Boolean);
