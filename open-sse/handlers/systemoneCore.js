@@ -19,13 +19,26 @@ export async function handleSystemoneCore({
 }) {
   const { provider, model } = modelInfo;
   const cfg = PROVIDER_MEDIA[provider]?.systemoneConfig;
-  const targetUrl = credentials?.providerSpecificData?.baseUrl || cfg?.baseUrl;
-  if (!targetUrl) {
+  // Registry baseUrl may carry placeholders: {accountId} (Cloudflare accounts path)
+  // and {model} for path-style lanes that take the model in the URL, not the body.
+  const accountId = credentials?.providerSpecificData?.accountId;
+  const rawUrl = credentials?.providerSpecificData?.baseUrl || cfg?.baseUrl;
+  if (!rawUrl) {
     return createErrorResult(
       HTTP_STATUS.BAD_REQUEST,
       `Provider '${provider}' does not support System One.`
     );
   }
+  if (rawUrl.includes("{accountId}") && !accountId) {
+    return createErrorResult(
+      HTTP_STATUS.BAD_REQUEST,
+      `Provider '${provider}' requires accountId in providerSpecificData`
+    );
+  }
+  const modelInUrl = rawUrl.includes("{model}");
+  const targetUrl = rawUrl
+    .replace("{accountId}", accountId || "")
+    .replace("{model}", model);
 
   // Validate input at the trust boundary; question-level shape is upstream's job.
   if (body.state === undefined || body.state === null) {
@@ -44,7 +57,11 @@ export async function handleSystemoneCore({
     // Zen lanes expect the official client session header on every request.
     "x-opencode-session": generateSessionId(),
   };
-  const requestBody = { ...body, model };
+  // Path-style lanes (Cloudflare /ai/run/{model}) reject a model field in the body —
+  // inputs go unwrapped. Body-style lanes (OpenCode Zen, OpenRouter) require it.
+  const requestBody = modelInUrl
+    ? (() => { const { model: _omit, ...rest } = body; return rest; })()
+    : { ...body, model };
 
   log?.debug?.("SYSTEMONE", `${provider.toUpperCase()} | ${model}`);
 
@@ -76,6 +93,16 @@ export async function handleSystemoneCore({
     responseBody = await providerResponse.json();
   } catch {
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`);
+  }
+
+  // Cloudflare /ai/run wraps payloads in {result, success, errors}; callers
+  // expect the System One body shape ({model, answers, usage}) at top level.
+  if (modelInUrl && responseBody?.success === false) {
+    const detail = responseBody?.errors?.[0]?.message || "Upstream returned success:false";
+    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `${provider}: ${detail}`);
+  }
+  if (modelInUrl && responseBody?.result && typeof responseBody.result === "object") {
+    responseBody = responseBody.result;
   }
 
   if (onRequestSuccess) await onRequestSuccess();

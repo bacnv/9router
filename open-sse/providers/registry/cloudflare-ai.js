@@ -40,6 +40,9 @@ export default {
     { id: "@cf/zai-org/glm-4.7-flash", name: "GLM 4.7 Flash" },
     { id: "@cf/qwen/qwq-32b", name: "QwQ 32B" },
     { id: "@cf/qwen/qwen2.5-coder-32b-instruct", name: "Qwen 2.5 Coder 32B Instruct" },
+    // Clef decision models (System One API-compatible, Jev drop-in) — called via /ai/run/{model}
+    { id: "@cf/cloudflare/clef", name: "Clef", kind: "systemone" },
+    { id: "@cf/cloudflare/clef-flash", name: "Clef Flash", kind: "systemone" },
     { id: "@cf/black-forest-labs/flux-2-klein-9b", name: "FLUX.2 Klein 9B", params: ["size"], kind: "image" },
     { id: "@cf/black-forest-labs/flux-2-klein-4b", name: "FLUX.2 Klein 4B", params: ["size"], kind: "image" },
     { id: "@cf/black-forest-labs/flux-2-dev", name: "FLUX.2 Dev", params: ["size"], kind: "image" },
@@ -52,6 +55,11 @@ export default {
     { id: "@cf/runwayml/stable-diffusion-v1-5-inpainting", name: "Stable Diffusion v1.5 Inpainting", params: ["size"], capabilities: ["edit","mask"], kind: "image" },
     { id: "@cf/stabilityai/stable-diffusion-xl-base-1.0", name: "SDXL Base 1.0", params: ["size"], kind: "image" },
   ],
-  serviceKinds: ["llm","image"],
+  serviceKinds: ["llm","image","systemone"],
   imageConfig: { baseUrl: "https://api.cloudflare.com/client/v4/accounts" },
+  // Clef decision models: Workers AI /ai/run takes the model in the URL and returns
+  // a {result, success, errors} envelope. Jev/System One body shape is identical.
+  systemoneConfig: {
+    baseUrl: "https://api.cloudflare.com/client/v4/accounts/{accountId}/ai/run/{model}",
+  },
 };
