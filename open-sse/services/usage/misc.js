@@ -56,12 +56,21 @@ function nextMonthlyResetFromSignup(createdAt, now = new Date()) {
 
 /**
  * Ollama Cloud Usage
- * GET https://ollama.com/api/usage — `limits.<window>.usage` is a 0..1 ratio
- *   (1.0 = limit reached). Paid plans report session (5h) + weekly (7d); the
- *   free plan reports a single monthly window. No reset timestamp exposed;
- *   the free monthly reset is derived from the account's signup date.
- * POST https://ollama.com/api/me — plan label + CreatedAt (fail-open).
+ *
+ * GET https://ollama.com/api/usage — request counts only. Ollama removed the
+ *   `limits.<window>.usage` ratios this used to read, so there is no
+ *   percentage left to draw a limit bar from: the response is now
+ *   {range, granularity, totals:{request_count}, buckets:[…]} and nothing else.
+ *   What is reported instead is the request_count total for the window, marked
+ *   unlimited so the UI shows a count rather than a bogus "0% used" bar.
+ * POST https://ollama.com/api/me — plan label (fail-open).
  * Auth: Authorization: Bearer <apiKey>
+ *
+ * Ollama meters usage in tokens/credits against a monthly allowance (Pro $60,
+ * Max $300, resetting on the subscription date), but exposes no endpoint that
+ * reports the consumed share — /api/me carries Plan and CreatedAt only. The
+ * signup-date reset is still derived and shown, since the allowance does reset
+ * then even though the amount spent is not knowable from here.
  */
 export async function getOllamaUsage(apiKey, providerSpecificData, proxyOptions = null) {
   if (!apiKey) {
@@ -69,7 +78,7 @@ export async function getOllamaUsage(apiKey, providerSpecificData, proxyOptions 
   }
 
   try {
-    const response = await proxyAwareFetch("https://ollama.com/api/usage", {
+    const response = await proxyAwareFetch("https://ollama.com/api/usage?range=30d", {
       headers: {
         Authorization: `Bearer ${apiKey}`,
         Accept: "application/json",
@@ -106,55 +115,54 @@ export async function getOllamaUsage(apiKey, providerSpecificData, proxyOptions 
       ? planRaw.charAt(0).toUpperCase() + planRaw.slice(1).toLowerCase()
       : "Ollama Cloud";
 
-    const limits = data?.limits && typeof data.limits === "object" ? data.limits : {};
-
-    // Ollama `usage` is a 0..1 ratio (1.0 = limit reached). Convert to a 0..100
-    // bar. Do NOT set absolute `remaining` — QuotaTable reads remainingPercentage.
-    function normalizeModels(models) {
-      return (Array.isArray(models) ? models : [])
-        .map((model, index) => ({
-          name: typeof model?.name === "string" ? model.name.trim() : "",
-          requestCount: Number(model?.request_count),
-          index,
-        }))
-        .filter((model) => model.name && Number.isFinite(model.requestCount) && model.requestCount >= 0)
-        .sort((a, b) => b.requestCount - a.requestCount || a.index - b.index)
+    // Buckets carry {from, until, request_count} — no model names. Label each
+    // by its start time (day for 7d/30d, hour for 24h) so the row breakdown
+    // still reads as "when", which is the only dimension Ollama exposes now.
+    function normalizeBuckets(buckets, granularity) {
+      return (Array.isArray(buckets) ? buckets : [])
+        .map((bucket) => {
+          const start = new Date(bucket?.from);
+          const count = Number(bucket?.request_count);
+          if (Number.isNaN(start.getTime()) || !Number.isFinite(count)) return null;
+          const label = granularity === "hour"
+            ? `${String(start.getUTCHours()).padStart(2, "0")}:00`
+            : `${start.getUTCMonth() + 1}/${start.getUTCDate()}`;
+          return { name: label, requestCount: count, index: start.getTime() };
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.index - b.index)
         .map(({ name, requestCount }) => ({ name, requestCount }));
     }
 
-    function ratioQuota(usageRatio, models, resetAt = null) {
-      const ratio = Math.max(0, Math.min(1, Number(usageRatio) || 0));
-      const usedPct = Math.round(ratio * 100);
-      return {
-        used: usedPct,
-        total: 100,
-        remainingPercentage: 100 - usedPct,
-        resetAt,
-        unlimited: false,
-        models: normalizeModels(models),
-      };
-    }
+    const monthlyResetAt = me?.CreatedAt ? nextMonthlyResetFromSignup(me.CreatedAt) : null;
 
-    const monthlyResetAt = planRaw.toLowerCase() === "free" && me?.CreatedAt
-      ? nextMonthlyResetFromSignup(me.CreatedAt)
-      : null;
+    const label = data?.range === "24h"
+      ? OLLAMA_LIMIT_WINDOWS.session
+      : data?.range === "7d"
+        ? OLLAMA_LIMIT_WINDOWS.weekly
+        : OLLAMA_LIMIT_WINDOWS.monthly;
 
-    const quotas = {};
-    for (const [key, label] of Object.entries(OLLAMA_LIMIT_WINDOWS)) {
-      const raw = limits[key]?.usage;
-      if (raw === undefined || raw === null) continue;
-      const ratio = Number(raw);
-      if (Number.isNaN(ratio)) continue;
-      quotas[label] = ratioQuota(ratio, limits[key]?.models, key === "monthly" ? monthlyResetAt : null);
-    }
-
-    if (Object.keys(quotas).length === 0) {
+    const requestCount = Number(data?.totals?.request_count);
+    if (!Number.isFinite(requestCount)) {
       return {
         plan,
         message: "Ollama Cloud connected. No usage limits reported.",
         quotas: {},
       };
     }
+
+    // Ollama reports a count, not a ceiling — there is no denominator left to
+    // draw a percentage against, so mark it unlimited and let the table show
+    // the raw count instead of a meaningless 0% bar.
+    const quotas = {
+      [label]: {
+        used: requestCount,
+        total: 0,
+        resetAt: monthlyResetAt,
+        unlimited: true,
+        models: normalizeBuckets(data?.buckets, data?.granularity),
+      },
+    };
 
     return { plan, quotas };
   } catch (error) {

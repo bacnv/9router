@@ -15,7 +15,16 @@ import { parseQuotaData } from "../../src/app/(dashboard)/dashboard/usage/compon
 import { PROVIDER_MODELS } from "../../open-sse/providers/index.js";
 import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.js";
 
-const USAGE_URL = "https://ollama.com/api/usage";
+// ollama.com/api/usage used to report `limits.<window>.usage` ratios and this
+// file asserted the percentage bars built from them. Ollama removed that field;
+// the live response is now {range, granularity, totals:{request_count}, buckets}
+// and carries no ceiling at all — verified against the account on 2026-10-07 by
+// probing every plausible limits/quota path (/api/limits, /api/quota,
+// /api/usage/limits, /api/plan, /api/billing, scope=all …), all 404 or 400.
+// The handler therefore reports the count as an unlimited row rather than
+// inventing a denominator.
+
+const USAGE_URL = "https://ollama.com/api/usage?range=30d";
 const ME_URL = "https://ollama.com/api/me";
 
 function jsonResponse(body, status = 200) {
@@ -25,61 +34,21 @@ function jsonResponse(body, status = 200) {
   });
 }
 
+// Shape captured verbatim from a live /api/usage?range=30d call.
 const SAMPLE_USAGE = {
-  activity: {
-    cost: "0.00000",
-    period: {
-      type: "last_4_weeks",
-      starting_at: "2026-07-01T00:00:00Z",
-      ending_at: "2026-07-29T00:00:00Z",
-    },
-    models: [],
-  },
-  limits: {
-    session: {
-      usage: 0,
-      models: [
-        { name: "gemma4:31b", request_count: 1 },
-        { name: "minimax-m3", request_count: 2 },
-        { name: " ", request_count: 99 },
-        { name: "invalid-negative", request_count: -1 },
-      ],
-    },
-    weekly: {
-      usage: 1,
-      models: [
-        { name: "minimax-m3", request_count: 422 },
-        { name: "kimi-k2.7-code", request_count: 971 },
-        { name: "invalid-count", request_count: "nope" },
-      ],
-    },
-  },
+  range: "30d",
+  scope: "self",
+  granularity: "day",
+  from: "2026-09-07T00:00:00Z",
+  until: "2026-10-07T04:43:58Z",
+  totals: { request_count: 39204 },
+  buckets: [
+    { from: "2026-09-07T00:00:00Z", until: "2026-09-08T00:00:00Z", request_count: 415 },
+    { from: "2026-09-08T00:00:00Z", until: "2026-09-09T00:00:00Z", request_count: 502 },
+  ],
 };
 
-const SAMPLE_FREE_USAGE = {
-  activity: {
-    cost: "0.00000",
-    period: {
-      type: "last_4_weeks",
-      starting_at: "2026-08-24T00:00:00Z",
-      ending_at: "2026-09-18T15:03:00Z",
-    },
-    models: [],
-  },
-  limits: {
-    monthly: {
-      usage: 0.021,
-      models: [
-        { name: "gpt-oss:120b", request_count: 6 },
-        { name: "gemma4:31b", request_count: 6 },
-      ],
-    },
-  },
-};
-
-const SAMPLE_ME = {
-  Plan: "max",
-};
+const SAMPLE_ME = { Plan: "max", CreatedAt: "2026-05-29T05:29:12.495696Z" };
 
 describe("ollama registry usage flags", () => {
   it("is listed for apikey quota dashboard", () => {
@@ -102,7 +71,7 @@ describe("getUsageForProvider(ollama)", () => {
     vi.clearAllMocks();
   });
 
-  it("GETs /api/usage with Bearer apiKey and POSTs /api/me for plan", async () => {
+  it("GETs /api/usage?range=30d with Bearer apiKey and POSTs /api/me for plan", async () => {
     proxyAwareFetch
       .mockResolvedValueOnce(jsonResponse(SAMPLE_USAGE))
       .mockResolvedValueOnce(jsonResponse(SAMPLE_ME));
@@ -115,29 +84,14 @@ describe("getUsageForProvider(ollama)", () => {
 
     expect(usage.message).toBeUndefined();
     expect(usage.plan).toBe("Max");
-    expect(usage.quotas["Session (5h)"]).toMatchObject({
-      used: 0,
-      total: 100,
-      remainingPercentage: 100,
-      unlimited: false,
+    expect(usage.quotas["Monthly"]).toMatchObject({
+      used: 39204,
+      total: 0,
+      unlimited: true,
     });
-    expect(usage.quotas["Weekly (7d)"]).toMatchObject({
-      used: 100,
-      total: 100,
-      remainingPercentage: 0,
-      unlimited: false,
-    });
-    expect(usage.quotas["Session (5h)"].models).toEqual([
-      { name: "minimax-m3", requestCount: 2 },
-      { name: "gemma4:31b", requestCount: 1 },
-    ]);
-    expect(usage.quotas["Weekly (7d)"].models).toEqual([
-      { name: "kimi-k2.7-code", requestCount: 971 },
-      { name: "minimax-m3", requestCount: 422 },
-    ]);
-    // Must not set absolute remaining — UI treats remaining as %
-    expect(usage.quotas["Session (5h)"].remaining).toBeUndefined();
-    expect(usage.quotas["Weekly (7d)"].remaining).toBeUndefined();
+    // No ceiling exists upstream, so nothing may be fabricated as a ratio.
+    expect(usage.quotas["Monthly"].remainingPercentage).toBeUndefined();
+    expect(usage.quotas["Monthly"].remaining).toBeUndefined();
 
     expect(proxyAwareFetch).toHaveBeenCalledTimes(2);
 
@@ -153,47 +107,51 @@ describe("getUsageForProvider(ollama)", () => {
     expect(meOpts.headers["Content-Length"]).toBe("0");
   });
 
-  it("maps the free plan's monthly window", async () => {
+  it("breaks the window down into its day buckets", async () => {
     proxyAwareFetch
-      .mockResolvedValueOnce(jsonResponse(SAMPLE_FREE_USAGE))
-      .mockResolvedValueOnce(jsonResponse({ Plan: "free" }));
+      .mockResolvedValueOnce(jsonResponse(SAMPLE_USAGE))
+      .mockResolvedValueOnce(jsonResponse(SAMPLE_ME));
 
-    const usage = await getUsageForProvider({
-      provider: "ollama",
-      apiKey: "k",
-      providerSpecificData: {},
-    });
+    const usage = await getUsageForProvider({ provider: "ollama", apiKey: "k" });
 
-    expect(usage.message).toBeUndefined();
-    expect(usage.plan).toBe("Free");
-    expect(Object.keys(usage.quotas)).toEqual(["Monthly"]);
-    expect(usage.quotas["Monthly"]).toMatchObject({
-      used: 2,
-      total: 100,
-      remainingPercentage: 98,
-      unlimited: false,
-    });
-    expect(usage.quotas["Monthly"].remaining).toBeUndefined();
-    expect(usage.quotas["Monthly"].resetAt).toBeNull();
+    expect(usage.quotas["Monthly"].models).toEqual([
+      { name: "9/7", requestCount: 415 },
+      { name: "9/8", requestCount: 502 },
+    ]);
   });
 
-  describe("free plan monthly reset from signup date", () => {
+  it("labels hourly buckets by hour when the API reports a 24h range", async () => {
+    proxyAwareFetch
+      .mockResolvedValueOnce(jsonResponse({
+        range: "24h",
+        granularity: "hour",
+        totals: { request_count: 2126 },
+        buckets: [
+          { from: "2026-10-06T04:00:00Z", until: "2026-10-06T05:00:00Z", request_count: 89 },
+          { from: "2026-10-06T05:00:00Z", until: "2026-10-06T06:00:00Z", request_count: 130 },
+        ],
+      }))
+      .mockResolvedValueOnce(jsonResponse(SAMPLE_ME));
+
+    const usage = await getUsageForProvider({ provider: "ollama", apiKey: "k" });
+
+    expect(Object.keys(usage.quotas)).toEqual(["Session (5h)"]);
+    expect(usage.quotas["Session (5h)"].models.map((m) => m.name)).toEqual(["04:00", "05:00"]);
+  });
+
+  describe("monthly reset from signup date", () => {
     afterEach(() => {
       vi.useRealTimers();
     });
 
-    async function monthlyResetAt(createdAt, now) {
+    async function monthlyResetAt(createdAt, now, plan = "free") {
       vi.useFakeTimers();
       vi.setSystemTime(new Date(now));
       proxyAwareFetch
-        .mockResolvedValueOnce(jsonResponse(SAMPLE_FREE_USAGE))
-        .mockResolvedValueOnce(jsonResponse({ Plan: "free", CreatedAt: createdAt }));
+        .mockResolvedValueOnce(jsonResponse(SAMPLE_USAGE))
+        .mockResolvedValueOnce(jsonResponse({ Plan: plan, CreatedAt: createdAt }));
 
-      const usage = await getUsageForProvider({
-        provider: "ollama",
-        apiKey: "k",
-        providerSpecificData: {},
-      });
+      const usage = await getUsageForProvider({ provider: "ollama", apiKey: "k" });
       return usage.quotas["Monthly"].resetAt;
     }
 
@@ -214,32 +172,24 @@ describe("getUsageForProvider(ollama)", () => {
         .toBe("2026-02-28T12:00:00.000Z");
     });
 
-    it("skips the reset when the plan is not free", async () => {
-      vi.useFakeTimers();
-      vi.setSystemTime(new Date("2026-09-18T15:03:00Z"));
-      proxyAwareFetch
-        .mockResolvedValueOnce(jsonResponse(SAMPLE_FREE_USAGE))
-        .mockResolvedValueOnce(jsonResponse({ Plan: "pro", CreatedAt: "2025-09-06T22:15:39Z" }));
+    it("applies to paid plans too — the allowance resets on the same anniversary", async () => {
+      // Pro/Max meter in credits against a monthly allowance that resets on the
+      // subscription date, so the derived reset is still the right thing to show.
+      expect(await monthlyResetAt("2026-05-29T05:29:12.495696Z", "2026-10-07T04:43:00Z", "pro"))
+        .toBe("2026-10-29T05:29:12.000Z");
+    });
 
-      const usage = await getUsageForProvider({
-        provider: "ollama",
-        apiKey: "k",
-        providerSpecificData: {},
-      });
-      expect(usage.quotas["Monthly"].resetAt).toBeNull();
+    it("omits the reset when the signup date is unusable", async () => {
+      expect(await monthlyResetAt(undefined, "2026-09-18T15:03:00Z")).toBeNull();
     });
   });
 
-  it("reports no limits when no known window is present", async () => {
+  it("reports no limits when the response carries no totals", async () => {
     proxyAwareFetch
-      .mockResolvedValueOnce(jsonResponse({ activity: {}, limits: {} }))
+      .mockResolvedValueOnce(jsonResponse({ range: "30d", granularity: "day", buckets: [] }))
       .mockResolvedValueOnce(jsonResponse({ Plan: "free" }));
 
-    const usage = await getUsageForProvider({
-      provider: "ollama",
-      apiKey: "k",
-      providerSpecificData: {},
-    });
+    const usage = await getUsageForProvider({ provider: "ollama", apiKey: "k" });
 
     expect(usage.message).toMatch(/no usage limits/i);
     expect(usage.quotas).toEqual({});
@@ -270,8 +220,8 @@ describe("getUsageForProvider(ollama)", () => {
   });
 });
 
-describe("Ollama quota model count UI", () => {
-  it("renders model counts horizontally with wrapping separators", () => {
+describe("Ollama quota count UI", () => {
+  it("renders bucket counts horizontally with wrapping separators", () => {
     const source = readFileSync(
       new URL("../../src/app/(dashboard)/dashboard/usage/components/ProviderLimits/QuotaTable.js", import.meta.url),
       "utf8",
@@ -285,41 +235,26 @@ describe("Ollama quota model count UI", () => {
 });
 
 describe("parseQuotaData(ollama)", () => {
-  it("forwards remainingPercentage for dashboard bars", () => {
+  it("carries the unlimited flag through so the table shows a count, not a bar", () => {
     const rows = parseQuotaData("ollama", {
-      plan: "Max",
+      plan: "Pro",
       quotas: {
-        "Session (5h)": {
-          used: 0,
-          total: 100,
-          remainingPercentage: 100,
-          resetAt: null,
-          models: [{ name: "gemma4:31b", requestCount: 1 }],
-        },
-        "Weekly (7d)": {
-          used: 100,
-          total: 100,
-          remainingPercentage: 0,
-          resetAt: null,
-          models: [{ name: "kimi-k2.7-code", requestCount: 971 }],
+        Monthly: {
+          used: 39204,
+          total: 0,
+          resetAt: "2026-10-29T05:29:12.000Z",
+          unlimited: true,
+          models: [{ name: "9/7", requestCount: 415 }],
         },
       },
     });
 
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
-      name: "Session (5h)",
-      used: 0,
-      total: 100,
-      remainingPercentage: 100,
-      models: [{ name: "gemma4:31b", requestCount: 1 }],
+      name: "Monthly",
+      used: 39204,
+      unlimited: true,
     });
-    expect(rows[1]).toMatchObject({
-      name: "Weekly (7d)",
-      used: 100,
-      total: 100,
-      remainingPercentage: 0,
-      models: [{ name: "kimi-k2.7-code", requestCount: 971 }],
-    });
+    expect(rows[0].models).toEqual([{ name: "9/7", requestCount: 415 }]);
   });
 });

@@ -703,8 +703,9 @@ export function parseQuotaData(provider, data) {
         break;
 
       case "ollama":
-        // Session (5h) / Weekly (7d) / Monthly usage % from ollama.com/api/usage.
-        // remainingPercentage only — no absolute remaining (UI treats remaining as %).
+        // ollama.com/api/usage no longer reports limit ratios — only request
+        // counts — so the row carries no percentage. `unlimited` makes the
+        // table show the raw count instead of a meaningless 0% bar.
         if (data.quotas) {
           Object.entries(data.quotas).forEach(([name, quota]) => {
             normalizedQuotas.push({
@@ -713,6 +714,7 @@ export function parseQuotaData(provider, data) {
               total: quota.total || 0,
               resetAt: quota.resetAt || null,
               remainingPercentage: quota.remainingPercentage,
+              unlimited: quota.unlimited,
               models: Array.isArray(quota.models) ? quota.models : [],
             });
           });
