@@ -439,7 +439,9 @@ describe("quota auto-ping", () => {
 
       await runQuotaAutoPingTick(deps, state);
 
-      expect(getOllamaUsage).toHaveBeenCalledWith("ollama-key", undefined, expect.any(Object));
+      // connection.id rides along so the handler can scope its per-model
+      // breakdown query to this account.
+      expect(getOllamaUsage).toHaveBeenCalledWith("ollama-key", undefined, expect.any(Object), "ollama-1");
       expect(deps.getExecutor).toHaveBeenCalledWith("ollama");
       expect(deps.getExecutor.mock.results[0].value.execute).toHaveBeenCalledWith(expect.objectContaining({
         model: "gemma4",

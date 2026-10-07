@@ -29,6 +29,7 @@ const providerHandlers = {
       connection.apiKey,
       connection.providerSpecificData,
       proxyOptions,
+      connection.id,
     ),
     sendPing: sendOllamaPing,
   },

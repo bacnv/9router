@@ -5,6 +5,13 @@ vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
   proxyAwareFetch: vi.fn(),
 }));
 
+// The per-model breakdown is counted from usageHistory, so the sqlite adapter
+// is stubbed — default empty so unrelated cases need not care.
+const dbAll = vi.fn(() => []);
+vi.mock("@/lib/db/driver.js", () => ({
+  getAdapter: vi.fn(async () => ({ all: dbAll, get: vi.fn(), run: vi.fn(), transaction: (f) => f() })),
+}));
+
 import { proxyAwareFetch } from "../../open-sse/utils/proxyFetch.js";
 import { getUsageForProvider } from "../../open-sse/services/usage.js";
 import {
@@ -69,6 +76,7 @@ describe("ollama registry usage flags", () => {
 describe("getUsageForProvider(ollama)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    dbAll.mockReturnValue([]);
   });
 
   it("GETs /api/usage?range=30d with Bearer apiKey and POSTs /api/me for plan", async () => {
@@ -107,36 +115,73 @@ describe("getUsageForProvider(ollama)", () => {
     expect(meOpts.headers["Content-Length"]).toBe("0");
   });
 
-  it("breaks the window down into its day buckets", async () => {
+  it("breaks the window down by model, busiest first", async () => {
+    dbAll.mockReturnValueOnce([
+      { model: "deepseek-v4.1-flash", n: 37863 },
+      { model: "glm-5.3-flash", n: 234 },
+      { model: "kimi-k2.7-code", n: 8 },
+    ]);
+    proxyAwareFetch
+      .mockResolvedValueOnce(jsonResponse(SAMPLE_USAGE))
+      .mockResolvedValueOnce(jsonResponse(SAMPLE_ME));
+
+    const usage = await getUsageForProvider({
+      provider: "ollama", apiKey: "k", id: "conn-1",
+    });
+
+    expect(usage.quotas["Monthly"].models).toEqual([
+      { name: "deepseek-v4.1-flash", requestCount: 37863 },
+      { name: "glm-5.3-flash", requestCount: 234 },
+      { name: "kimi-k2.7-code", requestCount: 8 },
+    ]);
+    // Counted per connection and scoped to the API window.
+    const [sql, params] = dbAll.mock.calls[0];
+    expect(sql).toContain("usageHistory");
+    expect(params[0]).toBe("conn-1");
+    expect(params[1]).toBe(SAMPLE_USAGE.from);
+  });
+
+  it("degrades to an empty breakdown when the ledger is unreadable", async () => {
+    dbAll.mockImplementationOnce(() => { throw new Error("no db"); });
+    proxyAwareFetch
+      .mockResolvedValueOnce(jsonResponse(SAMPLE_USAGE))
+      .mockResolvedValueOnce(jsonResponse(SAMPLE_ME));
+
+    const usage = await getUsageForProvider({
+      provider: "ollama", apiKey: "k", id: "conn-1",
+    });
+
+    // The headline count from the API must survive a missing breakdown.
+    expect(usage.quotas["Monthly"].used).toBe(39204);
+    expect(usage.quotas["Monthly"].models).toEqual([]);
+  });
+
+  it("reports an empty breakdown when no connection id is available", async () => {
     proxyAwareFetch
       .mockResolvedValueOnce(jsonResponse(SAMPLE_USAGE))
       .mockResolvedValueOnce(jsonResponse(SAMPLE_ME));
 
     const usage = await getUsageForProvider({ provider: "ollama", apiKey: "k" });
 
-    expect(usage.quotas["Monthly"].models).toEqual([
-      { name: "9/7", requestCount: 415 },
-      { name: "9/8", requestCount: 502 },
-    ]);
+    expect(usage.quotas["Monthly"].models).toEqual([]);
+    expect(dbAll).not.toHaveBeenCalled();
   });
 
-  it("labels hourly buckets by hour when the API reports a 24h range", async () => {
+  it("labels the window from the range the API reports", async () => {
     proxyAwareFetch
       .mockResolvedValueOnce(jsonResponse({
         range: "24h",
         granularity: "hour",
+        from: "2026-10-06T04:00:00Z",
         totals: { request_count: 2126 },
-        buckets: [
-          { from: "2026-10-06T04:00:00Z", until: "2026-10-06T05:00:00Z", request_count: 89 },
-          { from: "2026-10-06T05:00:00Z", until: "2026-10-06T06:00:00Z", request_count: 130 },
-        ],
+        buckets: [{ from: "2026-10-06T04:00:00Z", until: "2026-10-06T05:00:00Z", request_count: 89 }],
       }))
       .mockResolvedValueOnce(jsonResponse(SAMPLE_ME));
 
     const usage = await getUsageForProvider({ provider: "ollama", apiKey: "k" });
 
     expect(Object.keys(usage.quotas)).toEqual(["Session (5h)"]);
-    expect(usage.quotas["Session (5h)"].models.map((m) => m.name)).toEqual(["04:00", "05:00"]);
+    expect(usage.quotas["Session (5h)"].used).toBe(2126);
   });
 
   describe("monthly reset from signup date", () => {

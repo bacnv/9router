@@ -48,7 +48,7 @@ const USAGE_HANDLERS = {
   qoder: (c) => getQoderUsageFor(c),
   "qoder-cn": (c) => getQoderUsageFor(c),
   iflow: (c) => getIflowUsage(c.accessToken),
-  ollama: (c) => getOllamaUsage(c.apiKey, c.providerSpecificData, c.proxyOptions),
+  ollama: (c) => getOllamaUsage(c.apiKey, c.providerSpecificData, c.proxyOptions, c.connectionId),
   // OAuth connections store the coding-plan key on accessToken (no apiKey)
   glm: (c) => getGlmUsage(c.apiKey || c.accessToken, c.provider, c.proxyOptions),
   "glm-cn": (c) => getGlmUsage(c.apiKey || c.accessToken, c.provider, c.proxyOptions),

@@ -30,6 +30,33 @@ const OLLAMA_LIMIT_WINDOWS = {
   monthly: "Monthly",
 };
 
+/**
+ * Per-model request counts for one Ollama connection since `since`, busiest
+ * first, capped so a wide model list cannot wall the quota card.
+ * Returns [] on any failure — a missing breakdown must not sink the whole row.
+ *
+ * @param {string|undefined} connectionId
+ * @param {string|undefined} since ISO timestamp from the API window
+ */
+async function ollamaModelsByRequests(connectionId, since) {
+  if (!connectionId || !since) return [];
+  try {
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const db = await getAdapter();
+    const rows = db.all(
+      `SELECT model, COUNT(*) AS n FROM usageHistory
+        WHERE provider = 'ollama' AND connectionId = ? AND timestamp >= ?
+        GROUP BY model ORDER BY n DESC LIMIT 8`,
+      [connectionId, since]
+    );
+    return rows
+      .map((r) => ({ name: r.model, requestCount: Number(r.n) }))
+      .filter((r) => r.name && Number.isFinite(r.requestCount) && r.requestCount > 0);
+  } catch {
+    return [];
+  }
+}
+
 function addUtcMonths(date, months) {
   const total = date.getUTCMonth() + months;
   const year = date.getUTCFullYear() + Math.floor(total / 12);
@@ -72,7 +99,7 @@ function nextMonthlyResetFromSignup(createdAt, now = new Date()) {
  * signup-date reset is still derived and shown, since the allowance does reset
  * then even though the amount spent is not knowable from here.
  */
-export async function getOllamaUsage(apiKey, providerSpecificData, proxyOptions = null) {
+export async function getOllamaUsage(apiKey, providerSpecificData, proxyOptions = null, connectionId = null) {
   if (!apiKey) {
     return { message: "Ollama Cloud API key not available." };
   }
@@ -115,25 +142,6 @@ export async function getOllamaUsage(apiKey, providerSpecificData, proxyOptions 
       ? planRaw.charAt(0).toUpperCase() + planRaw.slice(1).toLowerCase()
       : "Ollama Cloud";
 
-    // Buckets carry {from, until, request_count} — no model names. Label each
-    // by its start time (day for 7d/30d, hour for 24h) so the row breakdown
-    // still reads as "when", which is the only dimension Ollama exposes now.
-    function normalizeBuckets(buckets, granularity) {
-      return (Array.isArray(buckets) ? buckets : [])
-        .map((bucket) => {
-          const start = new Date(bucket?.from);
-          const count = Number(bucket?.request_count);
-          if (Number.isNaN(start.getTime()) || !Number.isFinite(count)) return null;
-          const label = granularity === "hour"
-            ? `${String(start.getUTCHours()).padStart(2, "0")}:00`
-            : `${start.getUTCMonth() + 1}/${start.getUTCDate()}`;
-          return { name: label, requestCount: count, index: start.getTime() };
-        })
-        .filter(Boolean)
-        .sort((a, b) => a.index - b.index)
-        .map(({ name, requestCount }) => ({ name, requestCount }));
-    }
-
     const monthlyResetAt = me?.CreatedAt ? nextMonthlyResetFromSignup(me.CreatedAt) : null;
 
     const label = data?.range === "24h"
@@ -154,13 +162,20 @@ export async function getOllamaUsage(apiKey, providerSpecificData, proxyOptions 
     // Ollama reports a count, not a ceiling — there is no denominator left to
     // draw a percentage against, so mark it unlimited and let the table show
     // the raw count instead of a meaningless 0% bar.
+    //
+    // The breakdown is per model rather than per day: /api/usage only buckets by
+    // time (group_by=model is rejected with a 400), and a month of daily rows is
+    // unreadable. usageHistory records the model on every request, so count from
+    // there. It drifts a few percent below the API total — calls that never
+    // reached this gateway, plus rows older than retention — so the API figure
+    // stays the headline and only the split comes from local history.
     const quotas = {
       [label]: {
         used: requestCount,
         total: 0,
         resetAt: monthlyResetAt,
         unlimited: true,
-        models: normalizeBuckets(data?.buckets, data?.granularity),
+        models: await ollamaModelsByRequests(connectionId, data?.from),
       },
     };
 
