@@ -146,6 +146,12 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     let success = 0;
     let failed = 0;
     for (const entry of plan) {
+      // Rejected at planning time (e.g. Cloudflare missing its accountId) —
+      // count it as a failure and never send it.
+      if (entry.skipped) {
+        failed++;
+        continue;
+      }
       try {
         // Validate each key before saving so bulk-added connections get a
         // real status (active/unknown) like single adds, instead of a

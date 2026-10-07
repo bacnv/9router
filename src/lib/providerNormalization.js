@@ -41,5 +41,20 @@ export function normalizeProviderSpecificData(provider, body = {}, providerSpeci
     if (baseUrl) next.baseUrl = baseUrl;
   }
 
+  // The registry baseUrl carries {accountId}, so the executor throws at request
+  // time without it. Creating the connection anyway leaves a permanently broken
+  // row that only surfaces as a 502 on first use — reject it at the boundary
+  // instead. Accept the id from the body too: bulk-add and single-add both use
+  // the flat field, and providerSpecificData may be absent entirely.
+  if (provider === "cloudflare-ai") {
+    const accountId = String(next.accountId || body.accountId || "").trim();
+    if (!accountId) {
+      const err = new Error("Cloudflare requires an Account ID (accountId).");
+      err.status = 400;
+      throw err;
+    }
+    next.accountId = accountId;
+  }
+
   return Object.keys(next).length > 0 ? next : null;
 }

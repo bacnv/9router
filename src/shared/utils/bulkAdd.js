@@ -32,23 +32,27 @@ function parseLine(line, opts = {}) {
     const baseName = parts[0].trim();
     const apiKey = parts.slice(1, -1).join("|").trim();
     const accountId = parts[parts.length - 1].trim();
-    return {
-      baseName: baseName || "Key",
-      apiKey,
-      providerSpecificData: { accountId },
-    };
+    if (accountId) {
+      return {
+        baseName: baseName || "Key",
+        apiKey,
+        providerSpecificData: { accountId },
+      };
+    }
+    // Fell through: the trailing field was blank, so there is no accountId.
+    return { baseName: baseName || "Key", apiKey, missingAccountId: true };
   }
 
   if (parts.length >= 2) {
     // name|apiKey  (apiKey may itself contain pipes)
     const baseName = parts[0].trim();
     const apiKey = parts.slice(1).join("|").trim();
-    return { baseName: baseName || "Key", apiKey };
+    return { baseName: baseName || "Key", apiKey, ...(isCloudflareAi ? { missingAccountId: true } : {}) };
   }
 
   // apiKey only — auto-named "Key N"
   const apiKey = parts[0].trim();
-  return { baseName: "Key", apiKey };
+  return { baseName: "Key", apiKey, ...(isCloudflareAi ? { missingAccountId: true } : {}) };
 }
 
 /**
@@ -85,6 +89,18 @@ export function planBulkAdd(lines, existingNames, opts = {}) {
       idx += 1;
     }
     used.add(name.toLowerCase());
+
+    // Cloudflare without an accountId cannot work — the executor throws on
+    // {accountId} substitution. Flag it instead of planning a broken insert.
+    if (parsed.missingAccountId) {
+      out.push({
+        name,
+        apiKey: parsed.apiKey,
+        skipped: true,
+        reason: "Cloudflare needs name|apiKey|accountId",
+      });
+      continue;
+    }
 
     const entry = { name, apiKey: parsed.apiKey, skipped: false };
     if (parsed.providerSpecificData) entry.providerSpecificData = parsed.providerSpecificData;

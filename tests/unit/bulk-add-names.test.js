@@ -111,3 +111,50 @@ describe("planBulkAdd: robustness", () => {
     expect(out[0].name).toBe("Key 1");
   });
 });
+
+// Cloudflare connections carry accountId in providerSpecificData; the registry
+// baseUrl substitutes {accountId}, so the executor 502s on every request
+// without it. The bulk format is name|apiKey|accountId — pasting only
+// name|apiKey used to plan a connection that could never work.
+describe("planBulkAdd: Cloudflare requires the accountId field", () => {
+  it("plans the accountId when the third field is present", () => {
+    const out = planBulkAdd(["prod|cfut_key|acct1"], [], { isCloudflareAi: true });
+    expect(out[0].skipped).toBe(false);
+    expect(out[0].providerSpecificData).toEqual({ accountId: "acct1" });
+  });
+
+  it("skips a line that omits the accountId", () => {
+    const out = planBulkAdd(["prod|cfut_key"], [], { isCloudflareAi: true });
+    expect(out[0].skipped).toBe(true);
+    expect(out[0].reason).toMatch(/accountId/i);
+    expect(out[0].providerSpecificData).toBeUndefined();
+  });
+
+  it("skips a bare apiKey line too", () => {
+    const out = planBulkAdd(["cfut_key"], [], { isCloudflareAi: true });
+    expect(out[0].skipped).toBe(true);
+  });
+
+  it("skips a line whose accountId field is blank", () => {
+    const out = planBulkAdd(["prod|cfut_key|   "], [], { isCloudflareAi: true });
+    expect(out[0].skipped).toBe(true);
+  });
+
+  it("plans an all-good batch and skips only the incomplete line", () => {
+    const out = planBulkAdd(
+      ["a|key1|acct1", "b|key2", "c|key3|acct3"],
+      [],
+      { isCloudflareAi: true }
+    );
+    expect(out.map((o) => o.skipped)).toEqual([false, true, false]);
+    expect(out[0].providerSpecificData.accountId).toBe("acct1");
+    expect(out[2].providerSpecificData.accountId).toBe("acct3");
+  });
+
+  it("leaves non-Cloudflare providers unaffected", () => {
+    // The same line is valid for every other provider — no accountId concept.
+    const out = planBulkAdd(["prod|sk-1"], []);
+    expect(out[0].skipped).toBe(false);
+    expect(out[0].providerSpecificData).toBeUndefined();
+  });
+});

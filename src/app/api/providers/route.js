@@ -200,6 +200,12 @@ export async function POST(request) {
         { status: 409 }
       );
     }
+    // Validation raised by normalizeProviderSpecificData carries its own status,
+    // so an incomplete connection is reported as the caller's mistake (400)
+    // instead of a server fault (500).
+    if (error?.status === 400) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     console.log("Error creating provider:", error);
     return NextResponse.json({ error: "Failed to create provider" }, { status: 500 });
   }
