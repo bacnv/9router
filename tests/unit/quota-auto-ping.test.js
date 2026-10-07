@@ -48,7 +48,8 @@ vi.mock("@/shared/constants/config", () => ({
         settingsKey: "ollamaAutoPing",
         authType: "apikey",
         pingIntervalMs: 5 * 60 * 60 * 1000,
-        requiredQuotaKeys: ["Session (5h)", "Weekly (7d)"],
+        // Mirrors src/shared/constants/config.js — Ollama reports one row now.
+        requiredQuotaKeys: ["Monthly"],
         pingModel: "gemma4",
         pingText: "hi",
         pingMaxTokens: 1,
@@ -401,10 +402,12 @@ describe("quota auto-ping", () => {
   });
 
   describe("ollama auto-ping", () => {
+    // Ollama's usage API reports request counts, not limit ratios, so the
+    // handler returns a single unlimited row. The old Session/Weekly pair no
+    // longer exists upstream.
     const ollamaUsageAvailable = {
       quotas: {
-        "Session (5h)": { used: 20, total: 100, remainingPercentage: 80 },
-        "Weekly (7d)": { used: 30, total: 100, remainingPercentage: 70 },
+        Monthly: { used: 39204, total: 0, unlimited: true, remainingPercentage: undefined },
       },
     };
 
@@ -474,42 +477,23 @@ describe("quota auto-ping", () => {
       }));
     });
 
-    it("does not ping Ollama when Session (5h) quota is exhausted", async () => {
+    it("pings Ollama while the row is unlimited, even at a large request count", async () => {
+      // No ceiling is knowable, so a big count must not read as "exhausted" —
+      // that would stop the 5h keep-alive that warms the window.
       setupOllama();
       getOllamaUsage.mockResolvedValue({
-        quotas: {
-          "Session (5h)": { used: 100, total: 100, remainingPercentage: 0 },
-          "Weekly (7d)": { used: 30, total: 100, remainingPercentage: 70 },
-        },
+        quotas: { Monthly: { used: 999999, total: 0, unlimited: true } },
       });
 
       await runQuotaAutoPingTick(deps, state);
 
-      expect(deps.getExecutor).not.toHaveBeenCalled();
-      expect(deps.updateProviderConnection).not.toHaveBeenCalled();
+      expect(deps.getExecutor).toHaveBeenCalledWith("ollama");
     });
 
-    it("does not ping Ollama when Weekly (7d) quota is exhausted", async () => {
+    it("does not ping Ollama when the required Monthly key is missing", async () => {
       setupOllama();
       getOllamaUsage.mockResolvedValue({
-        quotas: {
-          "Session (5h)": { used: 20, total: 100, remainingPercentage: 80 },
-          "Weekly (7d)": { used: 100, total: 100, remainingPercentage: 0 },
-        },
-      });
-
-      await runQuotaAutoPingTick(deps, state);
-
-      expect(deps.getExecutor).not.toHaveBeenCalled();
-      expect(deps.updateProviderConnection).not.toHaveBeenCalled();
-    });
-
-    it("does not ping Ollama when either required quota key is missing", async () => {
-      setupOllama();
-      getOllamaUsage.mockResolvedValue({
-        quotas: {
-          "Session (5h)": { used: 20, total: 100, remainingPercentage: 80 },
-        },
+        quotas: { "Session (5h)": { used: 20, total: 100, remainingPercentage: 80 } },
       });
 
       await runQuotaAutoPingTick(deps, state);

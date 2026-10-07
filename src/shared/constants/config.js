@@ -95,7 +95,11 @@ export const QUOTA_AUTOPING_CONFIG = {
       settingsKey: "ollamaAutoPing",
       authType: "apikey",
       pingIntervalMs: 5 * 60 * 60 * 1000,
-      requiredQuotaKeys: ["Session (5h)", "Weekly (7d)"],
+      // Ollama dropped the per-window limit ratios from /api/usage, so the
+      // handler now reports a single "Monthly" row. Naming the old
+      // Session/Weekly keys here made hasAvailableRequiredQuotas always false,
+      // which silently stopped every ollama ping.
+      requiredQuotaKeys: ["Monthly"],
       pingModel: "gemma4",
       pingText: "hi",
       pingMaxTokens: 1,
