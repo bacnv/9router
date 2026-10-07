@@ -18,8 +18,13 @@ let backgroundRefreshStarted = false;
 function startBackgroundTokenRefreshFromCustomServer() {
   if (backgroundRefreshStarted) return;
   backgroundRefreshStarted = true;
-  // Prefer source path (repo / standalone that still has src). Fail-open if missing
-  // — initializeApp also starts the same scheduler when the Next app boots.
+  // Prefer source path (repo / standalone that still has src).
+  //
+  // This import is expected to fail in the runtime image: it ships src/mitm and
+  // src/sse without src/sse/utils, and the alias graph is only resolvable inside
+  // the Next bundle. instrumentation.js covers that case — it starts the same
+  // scheduler through the bundled graph at server boot, which is why this path
+  // stays fail-open instead of throwing.
   const modPath = path.join(__dirname, "src", "sse", "services", "backgroundTokenRefresh.js");
   import(pathToFileURL(modPath).href)
     .then((m) => {
@@ -39,7 +44,7 @@ function startBackgroundTokenRefreshFromCustomServer() {
       process.once("SIGTERM", stop);
     })
     .catch((e) => {
-      // Expected in published CLI standalone (src/ not on disk). App bootstrap covers it.
+      // Expected in the runtime image (see above). instrumentation.js covers it.
       if (process.env.DEBUG_BACKGROUND_TOKEN_REFRESH) {
         console.error("[BackgroundTokenRefresh] import failed:", e && e.message ? e.message : e);
       }
