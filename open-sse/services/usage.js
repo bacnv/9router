@@ -23,6 +23,7 @@ import { getXiaomiMimoUsage } from "./usage/xiaomi-mimo.js";
 import { resolveQoderCredentials } from "./qoderModels.js";
 import { getGlmUsage } from "./usage/glm.js";
 import { getCommandCodeUsage } from "./usage/commandcode.js";
+import { getCloudflareUsage } from "./usage/cloudflare.js";
 import {
   getIflowUsage,
   getOllamaUsage,
@@ -70,6 +71,8 @@ const USAGE_HANDLERS = {
   zed: (c) => getZedUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
   "xiaomi-mimo": (c) => getXiaomiMimoUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
   commandcode: (c) => getCommandCodeUsage(c.apiKey, c.proxyOptions),
+  // Counted locally, not upstream: Cloudflare's analytics API lags 9-15 min.
+  "cloudflare-ai": (c) => getCloudflareUsage(c.connectionId, c.proxyOptions),
 };
 
 // Qoder intl/CN share one usage path: PATs must be exchanged to a job token
@@ -81,7 +84,7 @@ async function getQoderUsageFor(c) {
 }
 
 export async function getUsageForProvider(connection, proxyOptions = null, options = {}) {
-  const { provider, accessToken, apiKey, email, providerSpecificData, projectId } = connection;
+  const { id, provider, accessToken, apiKey, email, providerSpecificData, projectId } = connection;
   const providerDataWithProjectId = {
     ...(providerSpecificData || {}),
     ...(projectId ? { projectId } : {}),
@@ -90,6 +93,7 @@ export async function getUsageForProvider(connection, proxyOptions = null, optio
   const handler = USAGE_HANDLERS[provider];
   if (!handler) return { message: `Usage API not implemented for ${provider}` };
   return await handler({
+    connectionId: id,
     provider,
     accessToken,
     apiKey,
