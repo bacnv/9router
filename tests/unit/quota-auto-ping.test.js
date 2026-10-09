@@ -54,6 +54,14 @@ vi.mock("@/shared/constants/config", () => ({
         pingText: "hi",
         pingMaxTokens: 1,
       },
+      charm: {
+        settingsKey: "charmAutoPing",
+        authType: "apikey",
+        pingIntervalMs: 24 * 60 * 60 * 1000 + 60 * 1000,
+        pingModel: "gemma-4-26b-a4b-it",
+        pingText: "hi",
+        pingMaxTokens: 1,
+      },
     },
   },
 }));
@@ -80,6 +88,7 @@ vi.mock("open-sse/services/usage/codex.js", () => ({
 
 vi.mock("open-sse/services/usage/misc.js", () => ({
   getOllamaUsage: vi.fn(),
+  getCharmUsage: vi.fn(),
 }));
 
 vi.mock("open-sse/executors/index.js", () => ({
@@ -94,6 +103,7 @@ describe("quota auto-ping", () => {
   let getCodexUsage;
   let getClaudeUsage;
   let getOllamaUsage;
+  let getCharmUsage;
   let getExecutor;
   let codexResponseText;
 
@@ -105,7 +115,7 @@ describe("quota auto-ping", () => {
 
     ({ getCodexUsage } = await import("open-sse/services/usage/codex.js"));
     ({ getClaudeUsage } = await import("open-sse/services/usage/claude.js"));
-    ({ getOllamaUsage } = await import("open-sse/services/usage/misc.js"));
+    ({ getOllamaUsage, getCharmUsage } = await import("open-sse/services/usage/misc.js"));
     ({ getExecutor } = await import("open-sse/executors/index.js"));
     ({ runQuotaAutoPingTick, configureQuotaAutoPing } = await import("../../src/shared/services/quotaAutoPing.js"));
 
@@ -562,6 +572,129 @@ describe("quota auto-ping", () => {
       expect(deps.updateProviderConnection).toHaveBeenCalledWith("ollama-1", expect.objectContaining({
         lastPingAt: "2026-01-01T12:00:00.000Z",
       }));
+    });
+  });
+
+  // Charm's 24h credit window is anchored to the first request of the window, so
+  // the ping is what restarts it — hence the interval branch, not the resetAt one.
+  describe("charm auto-ping", () => {
+    const charmConn = (overrides = {}) => ({
+      id: "charm-1",
+      provider: "charm",
+      authType: "apikey",
+      apiKey: "charm-key",
+      ...overrides,
+    });
+
+    function setupCharm(connOverrides = {}) {
+      deps.getSettings.mockResolvedValue({ charmAutoPing: { connections: { "charm-1": true } } });
+      deps.getProviderConnections.mockImplementation(async ({ provider }) => (
+        provider === "charm" ? [charmConn(connOverrides)] : []
+      ));
+      getCharmUsage.mockResolvedValue({
+        quotas: { "Balance (Hypercredits)": { total: 250, remaining: 250, resetAt: null } },
+      });
+    }
+
+    it("sends an initial minimal gemma ping for an opted-in Charm API key", async () => {
+      setupCharm();
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(getCharmUsage).toHaveBeenCalledWith("charm-key", expect.any(Object));
+      expect(deps.getExecutor).toHaveBeenCalledWith("charm");
+      expect(deps.getExecutor.mock.results[0].value.execute).toHaveBeenCalledWith(expect.objectContaining({
+        model: "gemma-4-26b-a4b-it",
+        stream: false,
+        credentials: expect.objectContaining({ apiKey: "charm-key", connectionId: "charm-1" }),
+        body: {
+          model: "gemma-4-26b-a4b-it",
+          messages: [{ role: "user", content: "hi" }],
+          stream: false,
+          max_tokens: 1,
+        },
+      }));
+      expect(deps.updateProviderConnection).toHaveBeenCalledWith("charm-1", expect.objectContaining({
+        lastPingAt: "2026-01-01T12:00:00.000Z",
+      }));
+    });
+
+    it("does not ping again within the 24h+1m interval", async () => {
+      setupCharm({ lastPingAt: "2026-01-01T11:00:00.000Z" });
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(getCharmUsage).not.toHaveBeenCalled();
+      expect(deps.getExecutor).not.toHaveBeenCalled();
+      expect(deps.updateProviderConnection).not.toHaveBeenCalled();
+    });
+
+    it("does not ping 24h to the minute after the last one", async () => {
+      // 24h exactly is still inside the window — the extra minute is deliberate.
+      setupCharm({ lastPingAt: "2025-12-31T12:00:00.000Z" });
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(deps.getExecutor).not.toHaveBeenCalled();
+    });
+
+    it("pings once 24h+1m have elapsed since the last ping", async () => {
+      setupCharm({ lastPingAt: "2025-12-31T11:59:00.000Z" });
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(deps.getExecutor).toHaveBeenCalledWith("charm");
+      expect(deps.updateProviderConnection).toHaveBeenCalledWith("charm-1", expect.objectContaining({
+        lastPingAt: "2026-01-01T12:00:00.000Z",
+      }));
+    });
+
+    it("pings even when the reported balance is zero", async () => {
+      // A spent window must still be re-opened, so no requiredQuotaKeys gate.
+      setupCharm();
+      getCharmUsage.mockResolvedValue({
+        quotas: { "Balance (Hypercredits)": { total: 250, remaining: 0, remainingPercentage: 0, resetAt: null } },
+      });
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(deps.getExecutor).toHaveBeenCalledWith("charm");
+    });
+
+    it("records a failure cooldown when the ping response is not ok", async () => {
+      setupCharm();
+      deps.getExecutor.mockReturnValue({
+        execute: vi.fn().mockResolvedValue({ response: { ok: false, body: { cancel: vi.fn() } } }),
+      });
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(state.failureCache["charm:charm-1"]).toBeTypeOf("number");
+      expect(deps.updateProviderConnection).not.toHaveBeenCalled();
+    });
+
+    it("does not retry a failed Charm ping within the failure cooldown", async () => {
+      setupCharm();
+      deps.getExecutor.mockReturnValue({
+        execute: vi.fn().mockResolvedValue({ response: { ok: false, body: { cancel: vi.fn() } } }),
+      });
+
+      await runQuotaAutoPingTick(deps, state);
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(deps.getExecutor.mock.results[0].value.execute).toHaveBeenCalledTimes(1);
+    });
+
+    it("ignores non-API-key Charm connections", async () => {
+      setupCharm();
+      deps.getProviderConnections.mockImplementation(async ({ provider }) => (
+        provider === "charm" ? [charmConn({ authType: "oauth", accessToken: "tok" })] : []
+      ));
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(getCharmUsage).not.toHaveBeenCalled();
+      expect(deps.getExecutor).not.toHaveBeenCalled();
     });
   });
 });

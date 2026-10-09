@@ -31,7 +31,12 @@ const AUTO_PING_SETTINGS_KEYS = {
   claude: "claudeAutoPing",
   codex: "codexAutoPing",
   ollama: "ollamaAutoPing",
+  charm: "charmAutoPing",
 };
+
+// Auto-ping targets OAuth connections, except these apikey providers that have
+// no OAuth mode at all.
+const AUTO_PING_APIKEY_PROVIDERS = new Set(["ollama", "charm"]);
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -72,6 +77,7 @@ export default function ProviderDetailPage() {
   const [thinkingMode, setThinkingMode] = useState("auto");
   const [autoPing, setAutoPing] = useState({ enabled: false, connections: {} });
   const [suggestedModels, setSuggestedModels] = useState([]);
+  const [refreshingSuggested, setRefreshingSuggested] = useState(false);
   const [liveModels, setLiveModels] = useState([]);
   // Live-catalog fetch warning/error (surfaced for zed only; cursor behavior unchanged).
   const [liveModelsError, setLiveModelsError] = useState(null);
@@ -519,11 +525,22 @@ export default function ProviderDetailPage() {
   }, [providerId, connections]);
 
   // Fetch suggested models from provider's public API (if configured)
+  const modelsFetcher = (OAUTH_PROVIDERS[providerId] || APIKEY_PROVIDERS[providerId] || FREE_PROVIDERS[providerId] || FREE_TIER_PROVIDERS[providerId])?.modelsFetcher;
+
   useEffect(() => {
-    const fetcher = (OAUTH_PROVIDERS[providerId] || APIKEY_PROVIDERS[providerId] || FREE_PROVIDERS[providerId] || FREE_TIER_PROVIDERS[providerId])?.modelsFetcher;
-    if (!fetcher) return;
-    fetchSuggestedModels(fetcher).then(setSuggestedModels);
-  }, [providerId]);
+    if (!modelsFetcher) return;
+    fetchSuggestedModels(modelsFetcher).then(setSuggestedModels);
+  }, [modelsFetcher]);
+
+  const handleRefreshSuggestedModels = async () => {
+    if (!modelsFetcher || refreshingSuggested) return;
+    setRefreshingSuggested(true);
+    try {
+      setSuggestedModels(await fetchSuggestedModels(modelsFetcher, { force: true }));
+    } finally {
+      setRefreshingSuggested(false);
+    }
+  };
 
   const handleSetAlias = async (modelId, alias, providerAliasOverride = providerAlias) => {
     const fullModel = `${providerAliasOverride}/${modelId}`;
@@ -1046,7 +1063,8 @@ export default function ProviderDetailPage() {
                 onMoveDown={() => handleSwapPriority(index, index + 1)}
                 onToggleActive={(isActive) => handleUpdateConnectionStatus(conn.id, isActive)}
                 autoPing={(AUTO_PING_SETTINGS_KEYS[providerId]
-                  && (conn.authType === "oauth" || (providerId === "ollama" && conn.authType === "apikey")))
+                  && (conn.authType === "oauth"
+                    || (AUTO_PING_APIKEY_PROVIDERS.has(providerId) && conn.authType === "apikey")))
                   ? {
                     on: autoPing.connections[conn.id] === true,
                     onToggle: (on) => handleAutoPingConnection(conn.id, on),
@@ -1285,7 +1303,7 @@ export default function ProviderDetailPage() {
         )}
 
         {/* Suggested models from provider API — show only models not yet added */}
-        {suggestedModels.length > 0 && (() => {
+        {modelsFetcher && (() => {
           const addedFullModels = new Set([
             ...Object.values(modelAliases),
             ...customModelRows.map((model) => model.fullModel),
@@ -1294,25 +1312,48 @@ export default function ProviderDetailPage() {
           const notAdded = suggestedModels.filter(
             (m) => !addedFullModels.has(`${providerStorageAlias}/${m.id}`) && !hardcodedIds.has(m.id)
           );
-          if (notAdded.length === 0) return null;
           return (
             <div className="w-full mt-2">
-              <p className="text-xs text-text-muted mb-2">Suggested free models (≥200k context):</p>
-              <div className="flex flex-wrap gap-2">
-                {notAdded.map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={async () => {
-                      await handleAddCustomModel(m.id, "llm", providerStorageAlias);
-                    }}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-black/10 dark:border-white/10 text-xs text-text-muted hover:text-primary hover:border-primary/40 hover:bg-primary/5 transition-colors"
-                    title={`${m.name} · ${(m.contextLength / 1000).toFixed(0)}k ctx`}
+              <div className="flex items-center gap-2 mb-2">
+                <p className="text-xs text-text-muted">
+                  Suggested models from the provider catalog
+                  {notAdded.length > 0 ? ` (${notAdded.length})` : ""}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleRefreshSuggestedModels}
+                  disabled={refreshingSuggested}
+                  title="Fetch the catalog again (bypasses the 10-minute cache)"
+                  className="flex items-center gap-1 rounded-lg border border-black/10 px-2 py-1 text-xs text-text-muted transition-colors hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10"
+                >
+                  <span
+                    className="material-symbols-outlined text-[13px]"
+                    style={refreshingSuggested ? { animation: "spin 1s linear infinite" } : undefined}
                   >
-                    <span className="material-symbols-outlined text-[13px]">add</span>
-                    {m.id.split("/").pop()}
-                  </button>
-                ))}
+                    refresh
+                  </span>
+                  {refreshingSuggested ? translate("Fetching...") : translate("Refresh")}
+                </button>
               </div>
+              {notAdded.length === 0 ? (
+                <p className="text-xs text-text-muted/70">All catalog models are already added.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {notAdded.map((m) => (
+                    <button
+                      key={m.id}
+                      onClick={async () => {
+                        await handleAddCustomModel(m.id, "llm", providerStorageAlias);
+                      }}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-black/10 dark:border-white/10 text-xs text-text-muted hover:text-primary hover:border-primary/40 hover:bg-primary/5 transition-colors"
+                      title={m.contextLength ? `${m.name} · ${(m.contextLength / 1000).toFixed(0)}k ctx` : m.name}
+                    >
+                      <span className="material-symbols-outlined text-[13px]">add</span>
+                      {m.id.split("/").pop()}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           );
         })()}

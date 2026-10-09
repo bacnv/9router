@@ -60,12 +60,18 @@ const AUTO_PING_SETTINGS_KEYS = {
   claude: "claudeAutoPing",
   codex: "codexAutoPing",
   ollama: "ollamaAutoPing",
+  charm: "charmAutoPing",
 };
+
+// Auto-ping targets OAuth connections, except these apikey providers that have
+// no OAuth mode at all.
+const AUTO_PING_APIKEY_PROVIDERS = new Set(["ollama", "charm"]);
 
 const AUTO_PING_TOOLTIPS = {
   claude: "When your 5h quota runs out, auto-sends a request the moment it resets so a new window starts right away.",
   codex: "Auto-starts the next 5h Codex window after reset by sending a tiny gpt-5.5 request. Consumes a small amount of quota.",
   ollama: "Sends a tiny gemma4 request every 5h while session and weekly quota remain. Consumes a small amount of quota.",
+  charm: "Sends a tiny gemma request every 24h+1m to restart Charm's 24h credit window, which is anchored to the first request of each window. Consumes a negligible amount of credit.",
 };
 
 function kiroMethodLabel(conn) {
@@ -608,6 +614,7 @@ export default function ProviderLimits() {
           claude: s?.claudeAutoPing?.connections || {},
           codex: s?.codexAutoPing?.connections || {},
           ollama: s?.ollamaAutoPing?.connections || {},
+          charm: s?.charmAutoPing?.connections || {},
         });
         setQuotaVisibility(s?.quotaVisibility || {});
       })
@@ -1248,7 +1255,8 @@ export default function ProviderLimits() {
                       </>
                     )}
                     {AUTO_PING_SETTINGS_KEYS[conn.provider]
-                      && (conn.authType === "oauth" || (conn.provider === "ollama" && conn.authType === "apikey")) && (
+                      && (conn.authType === "oauth"
+                        || (AUTO_PING_APIKEY_PROVIDERS.has(conn.provider) && conn.authType === "apikey")) && (
                       <Tooltip text={AUTO_PING_TOOLTIPS[conn.provider]}>
                         <button
                           type="button"

@@ -4,7 +4,7 @@ import "open-sse/index.js";
 import { getSettings, getProviderConnections, updateProviderConnection } from "@/lib/localDb";
 import { getClaudeUsage } from "open-sse/services/usage/claude.js";
 import { getCodexUsage } from "open-sse/services/usage/codex.js";
-import { getOllamaUsage } from "open-sse/services/usage/misc.js";
+import { getOllamaUsage, getCharmUsage } from "open-sse/services/usage/misc.js";
 import { getExecutor } from "open-sse/executors/index.js";
 import { CLAUDE_CLI_SPOOF_HEADERS } from "open-sse/providers/shared.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
@@ -32,6 +32,10 @@ const providerHandlers = {
       connection.id,
     ),
     sendPing: sendOllamaPing,
+  },
+  charm: {
+    getUsage: (connection, proxyOptions) => getCharmUsage(connection.apiKey, proxyOptions),
+    sendPing: sendCharmPing,
   },
 };
 
@@ -216,6 +220,33 @@ async function sendOllamaPing(connection, providerConfig, proxyOptions, deps) {
       messages: [{ role: "user", content: providerConfig.pingText }],
       stream: false,
       options: { num_predict: providerConfig.pingMaxTokens },
+    },
+  });
+  if (!response.ok) {
+    try { await response.body?.cancel?.(); } catch { /* noop */ }
+    return false;
+  }
+  await drainResponseBody(response);
+  return true;
+}
+
+async function sendCharmPing(connection, providerConfig, proxyOptions, deps) {
+  const executor = deps.getExecutor("charm");
+  const { response } = await executor.execute({
+    model: providerConfig.pingModel,
+    stream: false,
+    credentials: {
+      apiKey: connection.apiKey,
+      connectionId: connection.id,
+      providerSpecificData: connection.providerSpecificData,
+    },
+    proxyOptions,
+    log: console,
+    body: {
+      model: providerConfig.pingModel,
+      messages: [{ role: "user", content: providerConfig.pingText }],
+      stream: false,
+      max_tokens: providerConfig.pingMaxTokens,
     },
   });
   if (!response.ok) {

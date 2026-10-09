@@ -59,6 +59,10 @@ export default {
     { id: "llama-3.3-70b-instruct", name: "Llama 3.3 70B" },
   ],
   passthroughModels: true,
+  // Public catalog (no auth) — lets the dashboard list models the hardcoded set
+  // has not caught up with, and expose the ones it still carries after upstream
+  // retired them.
+  modelsFetcher: { url: "https://hyper.charm.land/v1/models", type: "openai" },
   features: {
     usage: true,
     usageApikey: true,

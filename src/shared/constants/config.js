@@ -104,6 +104,20 @@ export const QUOTA_AUTOPING_CONFIG = {
       pingText: "hi",
       pingMaxTokens: 1,
     },
+    charm: {
+      settingsKey: "charmAutoPing",
+      authType: "apikey",
+      // Charm's plan window is 24h anchored to the FIRST request of the window
+      // (sliding), not a fixed clock boundary — /v1/credits returns a bare
+      // balance with no resetAt to schedule against. So ping 24h+1m after the
+      // last one: the previous window has just expired, and this request starts
+      // the next one. Deliberately no requiredQuotaKeys — a zero balance must
+      // still ping, otherwise the window never reopens and the account deadlocks.
+      pingIntervalMs: 24 * 60 * 60 * 1000 + 60 * 1000,
+      pingModel: "gemma-4-26b-a4b-it",
+      pingText: "hi",
+      pingMaxTokens: 1,
+    },
   },
 };
 

@@ -99,7 +99,8 @@ export async function PATCH(request) {
     if (
       Object.prototype.hasOwnProperty.call(body, "claudeAutoPing") ||
       Object.prototype.hasOwnProperty.call(body, "codexAutoPing") ||
-      Object.prototype.hasOwnProperty.call(body, "ollamaAutoPing")
+      Object.prototype.hasOwnProperty.call(body, "ollamaAutoPing") ||
+      Object.prototype.hasOwnProperty.call(body, "charmAutoPing")
     ) {
       // Keep the scheduler absent when no account opted in; load its provider graph only on demand.
       import("@/shared/services/quotaAutoPing")

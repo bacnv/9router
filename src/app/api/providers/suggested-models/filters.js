@@ -5,6 +5,22 @@ const KNOWN_FREE_OPENCODE_MODELS = ["big-pickle"];
 const DEAD_FREE_OPENCODE_MODELS = new Set(["deepseek-v4-flash-free"]);
 
 export const FILTERS = {
+  // Standard OpenAI-shaped /v1/models catalog ({data:[{id,...}]}) — the default
+  // for providers that publish their whole catalogue unauthenticated. Keeps
+  // every entry with a usable id. Field names are not uniform across upstreams:
+  // charm sends display_name + context_window, vercel-ai-gateway sends name +
+  // context_window, venice sends context_length and neither name field. Each is
+  // optional, so read both spellings rather than dropping the data.
+  openai: (models) =>
+    (Array.isArray(models) ? models : [])
+      .filter((m) => typeof m?.id === "string" && m.id.trim() !== "")
+      .map((m) => ({
+        id: m.id,
+        name: m.display_name || m.name || m.id,
+        contextLength: Number(m.context_window ?? m.context_length) || undefined,
+      }))
+      .sort((a, b) => String(a.id).localeCompare(String(b.id))),
+
   "openrouter-free": (models) =>
     models
       .filter(

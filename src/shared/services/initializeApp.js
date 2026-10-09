@@ -121,7 +121,7 @@ async function runHeavyStartup() {
 }
 
 function hasQuotaAutoPingEnabled(settings) {
-  return [settings?.claudeAutoPing, settings?.codexAutoPing, settings?.ollamaAutoPing]
+  return [settings?.claudeAutoPing, settings?.codexAutoPing, settings?.ollamaAutoPing, settings?.charmAutoPing]
     .some((config) => Object.values(config?.connections || {}).some(Boolean));
 }
 

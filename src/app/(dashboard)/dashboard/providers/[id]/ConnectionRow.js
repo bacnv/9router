@@ -25,9 +25,11 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
         : "";
   const autoPingTooltip = autoPing?.provider === "ollama"
     ? "Sends a tiny gemma4 request every 5h while session and weekly quota remain. Consumes a small amount of quota."
-    : autoPing?.provider === "codex"
-      ? "Auto-starts the next 5h Codex window after reset by sending a tiny gpt-5.5 request. Consumes a small amount of quota."
-      : "When your 5h quota runs out, auto-sends a request the moment it resets so a new window starts right away.";
+    : autoPing?.provider === "charm"
+      ? "Sends a tiny gemma request every 24h+1m to restart Charm's 24h credit window, which is anchored to the first request of each window. Consumes a negligible amount of credit."
+      : autoPing?.provider === "codex"
+        ? "Auto-starts the next 5h Codex window after reset by sending a tiny gpt-5.5 request. Consumes a small amount of quota."
+        : "When your 5h quota runs out, auto-sends a request the moment it resets so a new window starts right away.";
 
   let maskedProxyUrl = "";
   if (boundProxyPool?.proxyUrl || connection.providerSpecificData?.connectionProxyUrl) {
