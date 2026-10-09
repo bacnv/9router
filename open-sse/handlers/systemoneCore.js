@@ -1,6 +1,7 @@
 import { createErrorResult, parseUpstreamError, formatProviderError } from "../utils/error.js";
 import { HTTP_STATUS, FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { PROVIDER_MEDIA } from "../providers/index.js";
+import { getModelUpstreamId } from "../config/providerModels.js";
 import { generateSessionId } from "../executors/opencode-zen.js";
 
 /**
@@ -38,7 +39,7 @@ export async function handleSystemoneCore({
   const modelInUrl = rawUrl.includes("{model}");
   const targetUrl = rawUrl
     .replace("{accountId}", accountId || "")
-    .replace("{model}", model);
+    .replace(/\{model\}/g, model);
 
   // Validate input at the trust boundary; question-level shape is upstream's job.
   if (body.state === undefined || body.state === null) {
@@ -58,10 +59,11 @@ export async function handleSystemoneCore({
     "x-opencode-session": generateSessionId(),
   };
   // Path-style lanes (Cloudflare /ai/run/{model}) reject a model field in the body —
-  // inputs go unwrapped. Body-style lanes (OpenCode Zen, OpenRouter) require it.
+  // inputs go unwrapped. Body-style lanes (OpenCode Zen, OpenRouter) require it, and
+  // Cloudflare validates the body model as a short selector (e.g. "clef-flash").
   const requestBody = modelInUrl
     ? (() => { const { model: _omit, ...rest } = body; return rest; })()
-    : { ...body, model };
+    : { ...body, model: getModelUpstreamId(provider, model) || model };
 
   log?.debug?.("SYSTEMONE", `${provider.toUpperCase()} | ${model}`);
 

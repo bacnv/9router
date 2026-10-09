@@ -56,12 +56,14 @@ export default {
     { id: "@cf/stabilityai/stable-diffusion-xl-base-1.0", name: "SDXL Base 1.0", params: ["size"], kind: "image" },
   ],
   serviceKinds: ["llm","image","systemone"],
-  imageConfig: { baseUrl: "https://api.cloudflare.com/client/v4/accounts" },
   // Clef decision models: Workers AI /ai/run takes the model in the URL and returns
   // a {result, success, errors} envelope. Jev/System One body shape is identical.
   systemoneConfig: {
     baseUrl: "https://api.cloudflare.com/client/v4/accounts/{accountId}/ai/run/{model}",
+    authType: "apikey",
+    authHeader: "bearer",
   },
+  imageConfig: { baseUrl: "https://api.cloudflare.com/client/v4/accounts" },
   // Surfaces the local daily-neuron counter as a quota row on the Quota page.
   // usageApikey is required too — connections here are apikey-auth, and the
   // usage route gates apikey providers on that flag before reaching the handler.

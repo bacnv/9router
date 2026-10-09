@@ -20,6 +20,38 @@ function normalizeTools(tools) {
 }
 
 describe("CodexExecutor tool normalization", () => {
+  it("preserves explicit strict flags while nullable-ing optional arguments", () => {
+    const parameters = {
+      type: "object",
+      properties: { sessionID: { type: "string" } },
+      required: [],
+    };
+    // An optional property is widened to `["string","null"]` before Codex strictifies the
+    // schema, so a model that omits the argument can send an explicit null (which the
+    // Responses translator later strips). `required` is untouched.
+    const normalized = {
+      type: "object",
+      properties: { sessionID: { type: ["string", "null"] } },
+      required: [],
+    };
+    const tools = normalizeTools([
+      { type: "function", name: "flat_false", strict: false, parameters },
+      { type: "function", name: "flat_true", strict: true, parameters },
+      { type: "function", function: { name: "nested_false", strict: false, parameters } },
+      { type: "function", function: { name: "nested_true", strict: true, parameters } },
+      { type: "function", name: "unspecified", parameters },
+    ]);
+
+    expect(tools.map((tool) => tool.strict)).toEqual([false, true, false, true, undefined]);
+    for (const tool of tools) {
+      expect(tool.parameters).toEqual(normalized);
+      expect(tool.parameters.required).toEqual([]);
+    }
+    expect(tools[4]).not.toHaveProperty("strict");
+    // The caller's schema object is never mutated in place.
+    expect(parameters.properties.sessionID.type).toBe("string");
+  });
+
   it("preserves Responses text.format for structured outputs", () => {
     const executor = new CodexExecutor();
     const schema = {
