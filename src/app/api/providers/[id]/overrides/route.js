@@ -10,7 +10,11 @@ const MAX_HEADERS = 20;
 const MAX_HEADER_VALUE_LENGTH = 8192;
 // RFC 7230 token subset: letters, digits, hyphen (no spaces, no unicode)
 const HEADER_NAME_RE = /^[A-Za-z0-9-]+$/;
-// Request-structure / auth headers a user override must never touch
+// Request-structure / auth headers a user override must never touch.
+// anthropic-beta is here for a different reason: it is computed per request
+// (executors/default.js buildHeaders → selectAnthropicBeta gates flags by model
+// and body), so a static override stored here would clobber that gating for
+// every model rather than just the row the user edited.
 const BLOCKED_HEADERS = new Set([
   "host",
   "content-length",
@@ -19,6 +23,7 @@ const BLOCKED_HEADERS = new Set([
   "transfer-encoding",
   "authorization",
   "cookie",
+  "anthropic-beta",
 ]);
 
 /**

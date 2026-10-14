@@ -5,8 +5,9 @@ import PropTypes from "prop-types";
 import { Card, Badge } from "@/shared/components";
 import { useNotificationStore } from "@/store/notificationStore";
 
-// Mirrors the server-side gate in /api/providers/[id]/overrides — client check is UX only
-const BLOCKED_HEADERS = ["host", "content-length", "content-type", "connection", "transfer-encoding", "authorization", "cookie"];
+// Mirrors the server-side gate in /api/providers/[id]/overrides — client check is UX only.
+// anthropic-beta is computed per request, not a static registry header.
+const BLOCKED_HEADERS = ["host", "content-length", "content-type", "connection", "transfer-encoding", "authorization", "cookie", "anthropic-beta"];
 const HEADER_NAME_RE = /^[A-Za-z0-9-]+$/;
 
 export default function CustomConfigCard({ providerId }) {
@@ -49,15 +50,19 @@ export default function CustomConfigCard({ providerId }) {
         notify.error(`Invalid header name: ${name}`);
         return;
       }
-      if (BLOCKED_HEADERS.includes(name.toLowerCase())) {
-        notify.error(`Header ${name} cannot be overridden`);
-        return;
-      }
       if (name in headers) {
         notify.error(`Duplicate header name: ${name}`);
         return;
       }
-      if (r.value !== builtin[name]) headers[name] = r.value;
+      // Untouched registry rows are never saved, so they must not be gated:
+      // several registries carry a blocked name (Anthropic-Beta, Content-Type)
+      // that the user never edited — rejecting those would abort the whole save.
+      if (r.value === builtin[name]) continue;
+      if (BLOCKED_HEADERS.includes(name.toLowerCase())) {
+        notify.error(`Header ${name} cannot be overridden`);
+        return;
+      }
+      headers[name] = r.value;
     }
 
     setSaving(true);
@@ -109,7 +114,11 @@ export default function CustomConfigCard({ providerId }) {
         <div className="mt-3 border-t border-border pt-3">
           <div className="flex flex-col gap-2">
             {rows.map((row, i) => {
-              const overridden = row.name.trim() in builtin && row.value !== builtin[row.name.trim()];
+              const name = row.name.trim();
+              const overridden = name in builtin && row.value !== builtin[name];
+              // Computed/structural headers can't be overridden — show them read-only
+              // instead of letting the user type a value the save would reject.
+              const locked = BLOCKED_HEADERS.includes(name.toLowerCase());
               return (
                 <div key={i} className="flex items-center gap-2">
                   <input
@@ -122,11 +131,12 @@ export default function CustomConfigCard({ providerId }) {
                   <input
                     value={row.value}
                     onChange={(e) => setRow(i, "value", e.target.value)}
+                    readOnly={locked}
                     placeholder="Value"
                     spellCheck={false}
-                    title={overridden ? "Overridden" : row.name.trim() in builtin ? "Registry default" : ""}
+                    title={locked ? "Computed per request — not overridable" : overridden ? "Overridden" : name in builtin ? "Registry default" : ""}
                     className={`min-w-0 flex-1 rounded-md border bg-background px-2 py-1.5 text-sm focus:border-primary focus:outline-none ${
-                      overridden ? "border-amber-400/60" : "border-border"
+                      locked ? "cursor-not-allowed opacity-60" : overridden ? "border-amber-400/60" : "border-border"
                     }`}
                   />
                   <button
