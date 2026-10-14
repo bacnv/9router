@@ -4,6 +4,7 @@ import { getCapabilitiesForModel } from "./capabilities.js";
 import { matchPattern } from "./pricing.js";
 import { resolveKiroEffortPath } from "../config/kiroConstants.js";
 import { getProviderModels } from "../config/providerModels.js";
+import { PROVIDERS } from "./index.js";
 
 // Shared level sets (deduped) — verified against provider docs + wire in thinkingUnified.applyFormat.
 const L = {
@@ -97,7 +98,13 @@ export function getThinkingLevels(provider, model) {
   const hit = PATTERN_THINKING.find((entry) =>
     (!entry.provider || entry.provider === provider) && matchPattern(entry.pattern, model)
   );
-  let levels = modelLevels || hit?.levels || FORMAT_LEVELS[caps.thinkingFormat] || L.base;
-  if (caps.thinkingCanDisable === false) levels = levels.filter((l) => l !== "none");
-  return levels;
+  // A transport-level thinkingFormat pin overrides the per-model family format, and
+  // thinkingUnified.resolveFormat reads it the same way. Without this, an aggregator
+  // that pins the wire (blackbox, cloudflare-ai, fci-neo, siliconflow, venice) still
+  // offered its models' family levels — "thinking" from zai, "minimal" from
+  // gemini-level — and applyFormat passed those straight out as reasoning_effort.
+  const pinnedFormat = provider ? PROVIDERS[provider]?.thinkingFormat : null;
+  const levels = modelLevels || hit?.levels
+    || FORMAT_LEVELS[pinnedFormat || caps.thinkingFormat] || L.base;
+  return caps.thinkingCanDisable === false ? levels.filter((l) => l !== "none") : levels;
 }

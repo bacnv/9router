@@ -28,6 +28,7 @@ const ALIAS_TOKENS = [
   "charm","hyper-charm","charm-land",
   "br","bedrock","aws-bedrock",
   "brx","bedrock-xai","bedrock-grok",
+  "fcineo","fpt-neo","fpt-token","fci-neo",
 ];
 
 // Sort idToAlias by key — runtime accesses by key, order is irrelevant (content-based)
@@ -57,6 +58,15 @@ for (const a of ALIAS_TOKENS) {
   if (baseline.aliasToId[a] !== current.aliasToId[a]) {
     console.error(`~ alias ${a}: ${baseline.aliasToId[a]} -> ${current.aliasToId[a]}`);
   }
+}
+// A key present on only one side makes the whole-object compare above fail without
+// the per-alias loop catching it (that loop only walks ALIAS_TOKENS). Report both
+// directions so the mismatch can never surface as a silent exit 1.
+for (const k of Object.keys(baseline.aliasToId)) {
+  if (!(k in current.aliasToId)) console.error(`- alias dropped from probe list: ${k} (add it to ALIAS_TOKENS)`);
+}
+for (const k of Object.keys(current.aliasToId)) {
+  if (!(k in baseline.aliasToId)) console.error(`+ alias not in baseline: ${k}`);
 }
 if (JSON.stringify(baseline.idToAlias) !== JSON.stringify(current.idToAlias)) console.error("~ idToAlias changed");
 if (JSON.stringify(baseline.modelKeys) !== JSON.stringify(current.modelKeys)) console.error("~ modelKeys changed");
