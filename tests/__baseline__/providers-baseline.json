@@ -1243,5 +1243,10 @@
       "url": "https://hyper.charm.land/v1/credits"
     },
     "format": "openai"
+  },
+  "fci-neo": {
+    "baseUrl": "https://token-api.fpt.ai/v1/chat/completions",
+    "thinkingFormat": "openai",
+    "format": "openai"
   }
 }

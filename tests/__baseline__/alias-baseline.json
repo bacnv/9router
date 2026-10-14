@@ -130,7 +130,11 @@
     "aws-bedrock": "bedrock",
     "brx": "bedrock-xai",
     "bedrock-xai": "bedrock-xai",
-    "bedrock-grok": "bedrock-xai"
+    "bedrock-grok": "bedrock-xai",
+    "fcineo": "fci-neo",
+    "fpt-neo": "fci-neo",
+    "fpt-token": "fci-neo",
+    "fci-neo": "fci-neo"
   },
   "idToAlias": {
     "agnes": "agnes",
@@ -179,6 +183,7 @@
     "exa": "exa",
     "fal-ai": "fal-ai",
     "fci-ai": "fci",
+    "fci-neo": "fcineo",
     "featherless": "featherless",
     "firecrawl": "firecrawl",
     "fireworks": "fireworks",
@@ -308,6 +313,7 @@
     "elevenlabs-tts-models",
     "fal-ai",
     "fci",
+    "fcineo",
     "featherless",
     "fireworks",
     "gc",
