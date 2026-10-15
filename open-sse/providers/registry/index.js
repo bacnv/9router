@@ -137,9 +137,10 @@ import p134 from "./minimax-code.js";
 import p135 from "./minimax-code-global.js";
 import p136 from "./bedrock.js";
 import p137 from "./bedrock-xai.js";
-import p138 from "./fci-ai.js";
-import p139 from "./charm.js";
-import p140 from "./fci-neo.js";
+import p138 from "./nous.js";
+import p139 from "./fci-ai.js";
+import p140 from "./charm.js";
+import p141 from "./fci-neo.js";
 export default [
   p0,
   p1,
@@ -280,4 +281,5 @@ export default [
   p138,
   p139,
   p140,
+  p141,
 ];

@@ -99,10 +99,10 @@ export function isCustomProvider(provider) {
     || provider.startsWith(CUSTOM_EMBEDDING_PREFIX);
 }
 
-// Official Antigravity IDE Desktop 2.11.0 fingerprint captured from macOS arm64.
+// Official Antigravity IDE Desktop 2.22.0 fingerprint captured from macOS arm64.
 // Keep this static even when 9router runs on Linux: the provider profile is
 // intentionally matching the IDE client, not the server host.
-export const ANTIGRAVITY_IDE_VERSION = "2.11.0";
+export const ANTIGRAVITY_IDE_VERSION = "2.22.0";
 export const ANTIGRAVITY_IDE_BASE_URL = "https://daily-cloudcode-pa.googleapis.com";
 export const ANTIGRAVITY_IDE_USER_AGENT = `antigravity/ide/${ANTIGRAVITY_IDE_VERSION} darwin/arm64`;
 

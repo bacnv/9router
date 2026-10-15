@@ -28,6 +28,7 @@ const ALIAS_TOKENS = [
   "charm","hyper-charm","charm-land",
   "br","bedrock","aws-bedrock",
   "brx","bedrock-xai","bedrock-grok",
+  "nous","nous-portal","nous-research","ns",
   "fcineo","fpt-neo","fpt-token","fci-neo",
 ];
 
