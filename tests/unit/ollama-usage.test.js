@@ -63,6 +63,13 @@ describe("ollama registry usage flags", () => {
     expect(USAGE_APIKEY_PROVIDERS).toContain("ollama");
   });
 
+  it("exposes the pinned DeepSeek V4.1 Flash 1017 snapshot with the same caps", () => {
+    expect(PROVIDER_MODELS.ollama.some((model) => model.id === "deepseek-v4.1-flash:1017-cloud")).toBe(true);
+    expect(getCapabilitiesForModel("ollama", "deepseek-v4.1-flash:1017-cloud")).toMatchObject(
+      getCapabilitiesForModel("ollama", "deepseek-v4.1-flash:cloud"),
+    );
+  });
+
   it("exposes GLM 5.3 Flash with vision and thinking", () => {
     expect(PROVIDER_MODELS.ollama.some((model) => model.id === "glm-5.3-flash")).toBe(true);
     expect(getCapabilitiesForModel("ollama", "glm-5.3-flash")).toMatchObject({

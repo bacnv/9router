@@ -349,6 +349,10 @@ export const PROVIDER_CAPABILITIES = {
   // Ollama Cloud is actually needed.
   "ollama": {
     "deepseek-v4.1-flash:cloud": { vision: true, reasoning: true, thinkingFormat: "deepseek", contextWindow: 1000000, maxOutput: 384000 },
+    // Pinned snapshot of the same model (library tag :1017-cloud, REST id
+    // :1017) — same caps; without the exact entry it would fall to the generic
+    // *deepseek-v4.* pattern and lose the 384K output limit.
+    "deepseek-v4.1-flash:1017-cloud": { vision: true, reasoning: true, thinkingFormat: "deepseek", contextWindow: 1000000, maxOutput: 384000 },
   },
   // MiniMax Code (mcode) credits lane — Anthropic messages on mavis; thinking
   // is adaptive effort via output_config (claude-adaptive). Limits from
