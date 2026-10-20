@@ -21,6 +21,7 @@ import {
 import { parseQuotaData } from "../../src/app/(dashboard)/dashboard/usage/components/ProviderLimits/utils.js";
 import { PROVIDER_MODELS } from "../../open-sse/providers/index.js";
 import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.js";
+import { getPricingForModel } from "../../open-sse/providers/pricing.js";
 
 // ollama.com/api/usage used to report `limits.<window>.usage` ratios and this
 // file asserted the percentage bars built from them. Ollama removed that field;
@@ -68,6 +69,18 @@ describe("ollama registry usage flags", () => {
     expect(getCapabilitiesForModel("ollama", "deepseek-v4.1-flash:1017-cloud")).toMatchObject(
       getCapabilitiesForModel("ollama", "deepseek-v4.1-flash:cloud"),
     );
+  });
+
+  it("exposes MiniMax M3.1 Flash with its own output limit and price", () => {
+    expect(PROVIDER_MODELS.ollama.some((model) => model.id === "minimax-m3.1-flash")).toBe(true);
+    expect(getCapabilitiesForModel("ollama", "minimax-m3.1-flash")).toMatchObject({
+      vision: true,
+      reasoning: true,
+      thinkingFormat: "minimax",
+      contextWindow: 1000000,
+      maxOutput: 512000,
+    });
+    expect(getPricingForModel("ollama", "minimax-m3.1-flash")).toMatchObject({ input: 0.15, output: 0.6, cached: 0.015 });
   });
 
   it("exposes GLM 5.3 Flash with vision and thinking", () => {
