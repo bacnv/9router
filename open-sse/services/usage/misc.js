@@ -81,6 +81,75 @@ function nextMonthlyResetFromSignup(createdAt, now = new Date()) {
   return null;
 }
 
+// Ollama Cloud migrated the active quota limits from /api/usage to /api/balance;
+// /api/usage now only reports activity. Returns {} on any failure — a missing
+// balance must not sink the usage row.
+async function ollamaBalanceQuotas(apiKey, proxyOptions) {
+  let balanceData = null;
+  try {
+    const res = await proxyAwareFetch(OLLAMA_BALANCE_URL, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        Accept: "application/json",
+      },
+    }, proxyOptions);
+    if (res?.ok) balanceData = await res.json();
+  } catch {
+    return {};
+  }
+  if (!balanceData) return {};
+
+  const quotas = {};
+  const inc = balanceData?.included;
+
+  if (inc?.session) {
+    const rem = Number(inc.session.remaining_percent);
+    const remPct = Number.isFinite(rem) ? Math.max(0, Math.min(100, rem)) : 100;
+    quotas["Session (5h)"] = {
+      used: Math.round((100 - remPct) * 100) / 100,
+      total: 100,
+      remainingPercentage: remPct,
+      resetAt: inc.session.resets_at || null,
+      unlimited: false,
+    };
+  }
+  if (inc?.weekly) {
+    const rem = Number(inc.weekly.remaining_percent);
+    const remPct = Number.isFinite(rem) ? Math.max(0, Math.min(100, rem)) : 100;
+    quotas["Weekly (7d)"] = {
+      used: Math.round((100 - remPct) * 100) / 100,
+      total: 100,
+      remainingPercentage: remPct,
+      resetAt: inc.weekly.resets_at || null,
+      unlimited: false,
+    };
+  }
+  if (inc?.allowance_usd !== undefined && inc?.balance_usd !== undefined) {
+    const allowance = Number(inc.allowance_usd) || 0;
+    const balance = Number(inc.balance_usd) || 0;
+    const used = Math.max(0, Math.round((allowance - balance) * 100) / 100);
+    const remPct = allowance > 0 ? Math.round((balance / allowance) * 10000) / 100 : 0;
+    quotas["Allowance ($)"] = {
+      used,
+      total: allowance,
+      remainingPercentage: remPct,
+      resetAt: inc.period?.until || null,
+      unlimited: false,
+      unit: "USD",
+    };
+  }
+  if (Number(balanceData?.purchased?.balance_usd) > 0) {
+    quotas["Purchased Credits"] = {
+      used: 0,
+      total: Number(balanceData.purchased.balance_usd),
+      remainingPercentage: 100,
+      isCreditBalance: true,
+      currency: "$",
+    };
+  }
+  return quotas;
+}
+
 /**
  * Ollama Cloud Usage
  *
@@ -99,6 +168,9 @@ function nextMonthlyResetFromSignup(createdAt, now = new Date()) {
  * signup-date reset is still derived and shown, since the allowance does reset
  * then even though the amount spent is not knowable from here.
  */
+const OLLAMA_ME_URL = "https://ollama.com/api/me";
+const OLLAMA_BALANCE_URL = "https://ollama.com/api/balance";
+
 export async function getOllamaUsage(apiKey, providerSpecificData, proxyOptions = null, connectionId = null) {
   if (!apiKey) {
     return { message: "Ollama Cloud API key not available." };
@@ -112,30 +184,30 @@ export async function getOllamaUsage(apiKey, providerSpecificData, proxyOptions 
       },
     }, proxyOptions);
 
-    if (response.status === 401 || response.status === 403) {
+    if (response?.status === 401 || response?.status === 403) {
       return { message: "Ollama Cloud API key invalid or expired." };
     }
 
-    if (!response.ok) {
+    if (response && !response.ok) {
       return { message: `Ollama Cloud usage API error (${response.status}).` };
     }
 
     let data;
     try {
-      data = await response.json();
+      data = response ? await response.json() : null;
     } catch {
       return { message: "Ollama Cloud usage response was not JSON." };
     }
 
     // Best-effort plan label from /api/me
-    const me = await proxyAwareFetch("https://ollama.com/api/me", {
+    const me = await proxyAwareFetch(OLLAMA_ME_URL, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         Accept: "application/json",
         "Content-Length": "0",
       },
-    }, proxyOptions).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    }, proxyOptions).then((r) => (r && r.ok ? r.json() : null)).catch(() => null);
 
     const planRaw = typeof me?.Plan === "string" ? me.Plan : "";
     const plan = planRaw
@@ -150,8 +222,14 @@ export async function getOllamaUsage(apiKey, providerSpecificData, proxyOptions 
         ? OLLAMA_LIMIT_WINDOWS.weekly
         : OLLAMA_LIMIT_WINDOWS.monthly;
 
+    // /api/usage only reports activity counts now; the live quota limits moved
+    // to /api/balance, so a response without totals is the tell to go there.
     const requestCount = Number(data?.totals?.request_count);
     if (!Number.isFinite(requestCount)) {
+      const balanceQuotas = await ollamaBalanceQuotas(apiKey, proxyOptions);
+      if (Object.keys(balanceQuotas).length > 0) {
+        return { plan, quotas: balanceQuotas };
+      }
       return {
         plan,
         message: "Ollama Cloud connected. No usage limits reported.",

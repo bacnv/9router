@@ -4,6 +4,25 @@ import { PROVIDER_MEDIA } from "../providers/index.js";
 import { getModelUpstreamId } from "../config/providerModels.js";
 import { generateSessionId } from "../executors/opencode-zen.js";
 
+const OPENCODE_PROVIDERS = new Set(["opencode", "opencode-zen"]);
+
+/**
+ * Resolve the System One URL. A saved host override is joined with the registry
+ * `path` (e.g. "/v1/systemone") without doubling a "/v1" or "/v1/systemone" the
+ * user already included. Without `path`, the override is used as a full URL.
+ */
+export function buildSystemoneUrl(override, cfg) {
+  const base = override?.trim();
+  if (!base) return cfg?.baseUrl;
+  if (!cfg?.path) return base;
+  const host = base.replace(/\/+$/, "");
+  const path = cfg.path.replace(/\/+$/, "");
+  if (host.endsWith(path)) return host;
+  const prefix = path.slice(0, path.lastIndexOf("/"));
+  if (prefix && host.endsWith(prefix)) return host + path.slice(prefix.length);
+  return host + path;
+}
+
 /**
  * Core System One (Jev) handler — native decision payload pass-through.
  * URL/headers come from the registry's systemoneConfig; body and JSON response
@@ -23,21 +42,21 @@ export async function handleSystemoneCore({
   // Registry baseUrl may carry placeholders: {accountId} (Cloudflare accounts path)
   // and {model} for path-style lanes that take the model in the URL, not the body.
   const accountId = credentials?.providerSpecificData?.accountId;
-  const rawUrl = credentials?.providerSpecificData?.baseUrl || cfg?.baseUrl;
-  if (!rawUrl) {
+  let targetUrl = buildSystemoneUrl(credentials?.providerSpecificData?.baseUrl, cfg);
+  if (!targetUrl) {
     return createErrorResult(
       HTTP_STATUS.BAD_REQUEST,
       `Provider '${provider}' does not support System One.`
     );
   }
-  if (rawUrl.includes("{accountId}") && !accountId) {
+  if (targetUrl.includes("{accountId}") && !accountId) {
     return createErrorResult(
       HTTP_STATUS.BAD_REQUEST,
       `Provider '${provider}' requires accountId in providerSpecificData`
     );
   }
-  const modelInUrl = rawUrl.includes("{model}");
-  const targetUrl = rawUrl
+  const modelInUrl = targetUrl.includes("{model}");
+  targetUrl = targetUrl
     .replace("{accountId}", accountId || "")
     .replace(/\{model\}/g, model);
 
@@ -55,8 +74,8 @@ export async function handleSystemoneCore({
     "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(cfg.headers || {}),
-    // Zen lanes expect the official client session header on every request.
-    "x-opencode-session": generateSessionId(),
+    // Zen lanes expect the official client session header; other providers don't need it.
+    ...(OPENCODE_PROVIDERS.has(provider) ? { "x-opencode-session": generateSessionId() } : {}),
   };
   // Path-style lanes (Cloudflare /ai/run/{model}) reject a model field in the body —
   // inputs go unwrapped. Body-style lanes (OpenCode Zen, OpenRouter) require it, and

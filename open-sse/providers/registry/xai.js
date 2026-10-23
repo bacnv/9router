@@ -35,6 +35,7 @@ export default {
   },
   features: { usage: true },
   models: [
+    { id: "grok-4.7", name: "Grok 4.7" },
     { id: "grok-4.6", name: "Grok 4.6" },
     { id: "grok-4.5", name: "Grok 4.5" },
     { id: "grok-4", name: "Grok 4" },

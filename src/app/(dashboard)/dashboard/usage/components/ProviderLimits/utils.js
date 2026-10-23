@@ -300,6 +300,12 @@ export function calculatePercentage(used, total) {
  * @returns {number} Remaining percentage (0-100)
  */
 export function getRemainingPercentage(quota) {
+  if (quota?.percentage !== undefined) {
+    // Providers may report the used share; the UI renders the remaining one.
+    const value = quota.percentageIsUsed === true ? 100 - quota.percentage : quota.percentage;
+    return Math.max(0, Math.round(value));
+  }
+
   if (quota?.remaining !== undefined) {
     return Math.max(0, Math.round(quota.remaining));
   }
@@ -736,9 +742,11 @@ export function parseQuotaData(provider, data) {
         break;
 
       case "ollama":
-        // ollama.com/api/usage no longer reports limit ratios — only request
-        // counts — so the row carries no percentage. `unlimited` makes the
-        // table show the raw count instead of a meaningless 0% bar.
+        // ollama.com/api/usage reports request counts only, so a count row
+        // carries no percentage — `unlimited` makes the table show the raw
+        // count instead of a meaningless 0% bar. When /api/usage has no totals
+        // the handler falls back to /api/balance, whose rows carry
+        // remainingPercentage plus the credit/allowance metadata below.
         if (data.quotas) {
           Object.entries(data.quotas).forEach(([name, quota]) => {
             normalizedQuotas.push({
@@ -747,6 +755,9 @@ export function parseQuotaData(provider, data) {
               total: quota.total || 0,
               resetAt: quota.resetAt || null,
               remainingPercentage: quota.remainingPercentage,
+              isCreditBalance: quota.isCreditBalance,
+              currency: quota.currency,
+              unit: quota.unit,
               unlimited: quota.unlimited,
               models: Array.isArray(quota.models) ? quota.models : [],
             });
@@ -797,10 +808,14 @@ export function parseQuotaData(provider, data) {
         if (data.quotas) {
           Object.entries(data.quotas).forEach(([name, quota]) => {
             normalizedQuotas.push({
-              name,
+              name: quota.name || name,
               used: quota.used || 0,
               total: quota.total || 0,
+              percentage: quota.percentage,
+              colorPercentage: quota.colorPercentage,
+              percentageIsUsed: quota.percentageIsUsed === true,
               resetAt: quota.resetAt || null,
+              emptyMessage: quota.emptyMessage || null,
             });
           });
         }
