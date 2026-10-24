@@ -11,7 +11,6 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { getWritableDataDir } from "../utils/writableDataDir.js";
 
@@ -33,6 +32,13 @@ function isModuleMissing(error) {
 function npmInstall(pkg, version) {
   const cwd = getRuntimeDir();
   fs.mkdirSync(cwd, { recursive: true });
+  // Without a manifest here npm walks UP to the app's package.json, treats /app
+  // as the project root, prints "up to date" and installs nothing — the runtime
+  // dir stays empty and every later resolve fails. Own the manifest instead.
+  const manifest = path.join(cwd, "package.json");
+  if (!fs.existsSync(manifest)) {
+    fs.writeFileSync(manifest, JSON.stringify({ name: "9router-runtime", private: true }, null, 2) + "\n");
+  }
   const npm = process.platform === "win32" ? "npm.cmd" : "npm";
   const args = ["install", "--no-audit", "--no-fund", "--prefer-online", `${pkg}@${version}`];
   return new Promise((resolve) => {
@@ -46,7 +52,21 @@ function npmInstall(pkg, version) {
 
 const inflight = new Map();
 
+// webpack rewrites the ESM named import `createRequire` to `void 0` in the
+// server bundle, so the second resolution step below died with "Cannot read
+// properties of undefined (reading 'resolve')" — a first-run web login (no
+// runtime dir yet) failed instead of falling through to the npm install.
+// Reading it off the module namespace at runtime keeps the binding intact.
+async function requireFrom(runtimeDir) {
+  const nodeModule = await import("node:module");
+  const createRequire = nodeModule.createRequire || nodeModule.default?.createRequire;
+  return createRequire(path.join(runtimeDir, "package.json"));
+}
+
 async function load(pkg) {
+  // Every import() below needs webpackIgnore: without it webpack replaces the
+  // call with a stub that throws "Cannot find module '<url>'" — the URL is not
+  // in the bundle's module map, so a runtime-installed path can never load.
   // 1) Resolvable from the app install (dev machine / traced standalone).
   try {
     return await import(/* webpackIgnore: true */ pkg);
@@ -54,15 +74,15 @@ async function load(pkg) {
     if (!isModuleMissing(error)) throw error;
   }
   // 2) Already present in the runtime dir from a previous install.
-  const runtimeRequire = createRequire(path.join(getRuntimeDir(), "package.json"));
+  const dir = getRuntimeDir();
   try {
-    return await import(pathToFileURL(runtimeRequire.resolve(pkg)).href);
+    const runtimeRequire = await requireFrom(dir);
+    return await import(/* webpackIgnore: true */ pathToFileURL(runtimeRequire.resolve(pkg)).href);
   } catch (error) {
     if (!isModuleMissing(error)) throw error;
   }
   // 3) Download on demand, then import from the runtime dir.
   const version = LAZY_DEP_VERSIONS[pkg] || "latest";
-  const dir = getRuntimeDir();
   const res = await npmInstall(pkg, version);
   if (!res.ok) {
     const reason = (res.stderr.match(/npm ERR! ?(.+)/) || [])[1] || res.stderr.split("\n").filter(Boolean).pop() || "unknown npm error";
@@ -71,7 +91,8 @@ async function load(pkg) {
       `install it manually: cd "${dir}" && npm install ${pkg}@${version}`
     );
   }
-  return import(pathToFileURL(createRequire(path.join(dir, "package.json")).resolve(pkg)).href);
+  const runtimeRequire = await requireFrom(dir);
+  return import(/* webpackIgnore: true */ pathToFileURL(runtimeRequire.resolve(pkg)).href);
 }
 
 export function loadRuntimeDep(pkg) {
