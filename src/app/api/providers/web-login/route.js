@@ -44,22 +44,38 @@ export async function GET(request) {
 
       const providerName = AI_PROVIDERS[provider]?.name || provider;
       const email = identity.email || "";
-      const name = email || providerName;
+      // Store which browser profile this session came from. It is the only
+      // account discriminator for providers whose identity probe returns no
+      // email (muse-web), and it lets a second Google account keep its own row.
+      const profile = session.profile || "default";
+      const baseName = email || providerName;
+      const name = profile === "default" ? baseName : `${baseName} (${profile})`;
       session.accountEmail = email;
       const providerSpecificData = {
         authMethod: "web-login",
+        profile,
         ...(config?.credentialFrom === "localStorageValue" ? { tokenSource: "localStorage" } : {}),
       };
 
-      // Re-login refreshes the credential in place. Match by account email so a
-      // second Google account keeps its own row; providers that expose no email
-      // fall back to the single web-login row this button created.
+      // Re-login refreshes the same row in place. Identity is (email, profile):
+      // a second Google account or a second browser profile keeps its own row.
+      // Providers that expose no email (muse-web) dedupe on the profile alone —
+      // without it every login collapsed onto the one row the button created,
+      // so a second muse.ai account silently overwrote the first.
       const webLoginRows = (await getProviderConnections({ provider }))
         .filter((c) => c.providerSpecificData?.authMethod === "web-login")
         .sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
-      const existing = email
-        ? webLoginRows.find((c) => c.email === email)
-        : webLoginRows.length === 1 ? webLoginRows[0] : null;
+      const recordedProfile = (c) => c.providerSpecificData?.profile || null;
+      const sameIdentity = (c) => (recordedProfile(c) ?? "default") === profile
+        && (email ? c.email === email : true);
+      const existing = webLoginRows.find(sameIdentity)
+        // Rows written before profiles were recorded carry no email and no
+        // profile; adopt the default profile's row rather than leaving a
+        // duplicate behind on the next login.
+        ?? (profile === "default" && !email
+          ? webLoginRows.find((c) => !recordedProfile(c) && !c.email)
+          : null)
+        ?? null;
 
       if (existing) {
         const updated = await updateProviderConnection(existing.id, {
@@ -73,9 +89,12 @@ export async function GET(request) {
           isActive: true,
         });
         session.savedConnectionId = updated?.id || existing.id;
-        // Same account logged in twice used to leave a stale duplicate row.
+        // Same identity logged in twice used to leave a stale duplicate row.
+        // Only rows of THIS (email, profile) identity are duplicates — a bare
+        // email match now spans profiles and would delete the other account.
         for (const duplicate of webLoginRows) {
-          if (duplicate.id === existing.id || duplicate.email !== email || !email) continue;
+          if (duplicate.id === existing.id) continue;
+          if (!sameIdentity(duplicate)) continue;
           await deleteProviderConnection(duplicate.id);
         }
       } else {
