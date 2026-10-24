@@ -97,7 +97,13 @@ async function load(pkg) {
 
 export function loadRuntimeDep(pkg) {
   if (!inflight.has(pkg)) {
-    inflight.set(pkg, load(pkg).finally(() => inflight.delete(pkg)));
+    // `load` always returns an ESM namespace. These deps are CommonJS, so their
+    // real exports sit on `default` — callers that destructure (e.g.
+    // `const { chromium } = await loadRuntimeDep("playwright-core")`) would
+    // otherwise get undefined and fail with "cannot read properties of
+    // undefined (reading 'launchPersistentContext')". Unwrap the CJS shape.
+    const promise = load(pkg).then((mod) => mod?.default ?? mod);
+    inflight.set(pkg, promise.finally(() => inflight.delete(pkg)));
   }
   return inflight.get(pkg);
 }

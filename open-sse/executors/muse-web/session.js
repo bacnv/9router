@@ -86,12 +86,20 @@ export function missingSessionCookies(pairs) {
   return SESSION_COOKIES.filter((name) => !names.has(name));
 }
 
-/** Playwright addCookies() shape for the .muse.ai domain. */
+/**
+ * Playwright addCookies() shape for the .muse.ai domain.
+ *
+ * `__Host-` cookies must be host-only: a Domain attribute makes Chrome reject
+ * the whole addCookies() batch with "Invalid cookie fields" (verified against
+ * Chrome 155 — ".muse.ai" fails, "muse.ai" lands, omitting domain fails with
+ * "should have a url or a domain/path pair"). So they get the bare host while
+ * everything else keeps the parent-domain scope.
+ */
 export function toMuseCookies(header) {
   return parseCookiePairs(header).map(({ name, value }) => ({
     name,
     value,
-    domain: ".muse.ai",
+    domain: name.startsWith("__Host-") ? "muse.ai" : ".muse.ai",
     path: "/",
     secure: true,
     httpOnly: false,

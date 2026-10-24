@@ -260,10 +260,15 @@ function parseCookieString(raw, domain) {
       const name = pair.slice(0, eq).trim();
       const value = pair.slice(eq + 1).trim();
       if (!name || !value) return null;
+      // `__Host-` cookies must be host-only: a Domain attribute makes Chrome
+      // reject the entire addCookies() batch with "Invalid cookie fields", so
+      // one such cookie in a harvested jar breaks every provider that seeds it.
       return {
         name,
         value,
-        domain: domain.startsWith(".") ? domain : `.${domain}`,
+        domain: name.startsWith("__Host-")
+          ? domain.replace(/^\./, "")
+          : (domain.startsWith(".") ? domain : `.${domain}`),
         path: "/",
         expires: -1,
         httpOnly: false,
