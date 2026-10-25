@@ -5,7 +5,7 @@ description: Keep a muse.ai design consistent across follow-up image and video r
 
 # 9Router — Muse Thread Continuity (design memory)
 
-Requires `NINEROUTER_URL` (and `NINEROUTER_KEY` if auth enabled). See https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/9router/SKILL.md for setup.
+Requires `NINEROUTER_URL` (and `NINEROUTER_KEY` if auth enabled). See https://raw.githubusercontent.com/bacnv/9router/refs/heads/merge/v0.5.109-fci-ai/skills/9router/SKILL.md for setup.
 
 Requires a **muse-web** connection in the 9Router dashboard (muse.ai cookies — `hatch_sess` at minimum). Models: `muse-web/muse-image`, `muse-web/muse-video`.
 

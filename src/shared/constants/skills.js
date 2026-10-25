@@ -1,8 +1,11 @@
 // Agent Skills metadata — single source of truth for /dashboard/skills page.
 // Each skill = 1 raw GitHub URL the user copies and pastes to any AI agent.
 
-const REPO = "decolua/9router";
-const BRANCH = "master";
+// Fork-local: this build ships skills that upstream does not have yet
+// (9router-muse-thread), so the URLs must point at the fork branch that
+// carries them — pointing at decolua/master returned 404 for new skills.
+const REPO = "bacnv/9router";
+const BRANCH = "merge/v0.5.109-fci-ai";
 const SKILL_PATH = "skills";
 
 export const SKILLS_REPO_URL = `https://github.com/${REPO}`;
