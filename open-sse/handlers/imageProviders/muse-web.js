@@ -17,17 +17,22 @@ export default {
     const executor = getExecutor("muse-web");
     if (!executor) throw new Error("Muse Web executor not found");
 
-    const media = await executor.generateMedia({
+    // `thread_id` continues an earlier muse.ai conversation so the agent keeps
+    // its memory (a design survives follow-up renders). Callers persist the id
+    // echoed back — 9Router stores no thread state itself.
+    const { media, threadId } = await executor.generateMedia({
       prompt: body.prompt,
       kind: "image",
       size: body.size,
       n: Math.max(1, Math.min(4, Number(body.n) || 1)),
       credentials,
       log,
+      threadId: body.thread_id || null,
     });
 
     return {
       created: nowSec(),
+      ...(threadId ? { thread_id: threadId } : {}),
       data: media.map((m) => ({
         b64_json: m.b64,
         ...(m.mime ? { mime_type: m.mime } : {}),

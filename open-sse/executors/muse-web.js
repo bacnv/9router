@@ -17,6 +17,7 @@ import { SSE_DONE, SSE_HEADERS_NO_BUFFER } from "../utils/sseConstants.js";
 import { isMissingBrowserExecutable, resolveSystemChromeExecutable } from "./browserExecutableCheck.js";
 import { acquireBrowserContext, releaseBrowserContext } from "../services/browserPool.js";
 import {
+  SITE,
   NEW_THREAD_URL,
   parseCookiePairs,
   toMuseCookies,
@@ -136,6 +137,48 @@ async function waitForThreadReady(page) {
     throw new MuseWebAuthError("muse.ai redirected to login; cookies are no longer valid");
   }
   throw new MuseWebTimeoutError("muse.ai page did not become ready");
+}
+
+/**
+ * The thread id from the page URL. muse mints it on the first message, so
+ * `/thread/new` becomes `/thread/<uuid>` once the agent starts replying.
+ */
+function readThreadId(page) {
+  try {
+    const path = new URL(page.url()).pathname;
+    const match = path.match(/\/thread\/([^/?#]+)/);
+    return match && match[1] !== "new" ? match[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The chat snapshot a request measures progress against.
+ *
+ * A reopened thread paints its history after the page reports ready, so a
+ * snapshot taken immediately counts zero bubbles and zero attachments — the
+ * previous turns' media then look "new" and waitForMedia returns a stale
+ * image. Wait until the counts hold still, so the baseline reflects the whole
+ * conversation.
+ */
+async function readChatBaseline(page, { settleMs = 6000 } = {}) {
+  const deadline = Date.now() + settleMs;
+  let prev = null;
+  let stable = 0;
+  let state = await readChatState(page);
+  while (Date.now() < deadline) {
+    await sleep(200);
+    const key = `${state.agentCount || 0}:${(state.attachments || []).length}`;
+    if (prev === key) {
+      if (++stable >= 3) return state;
+    } else {
+      stable = 0;
+      prev = key;
+    }
+    state = await readChatState(page).catch(() => state);
+  }
+  return state;
 }
 
 async function readChatState(page) {
@@ -437,9 +480,14 @@ export class MuseWebExecutor extends BaseExecutor {
 
   /**
    * Renew the session over plain HTTP, acquire the pooled browser context
-   * seeded with the rotated cookies, and open a ready /thread/new page.
+   * seeded with the rotated cookies, and open a ready thread page.
+   *
+   * `threadId` reopens an existing thread so the agent keeps the conversation's
+   * memory (a design stays consistent across follow-up images and videos). The
+   * caller owns persistence — 9Router keeps no state. Omitting it (or a thread
+   * that no longer exists) starts a fresh one.
    */
-  async _openThreadPage(credentials, { signal, log }) {
+  async _openThreadPage(credentials, { signal, log, threadId } = {}) {
     const rawCookie = resolveMuseCookie(credentials);
     if (!rawCookie) throw new MuseWebAuthError("Missing muse.ai cookies");
 
@@ -470,8 +518,18 @@ export class MuseWebExecutor extends BaseExecutor {
     }
 
     const page = await pooled.context.newPage();
-    await page.goto(NEW_THREAD_URL, { waitUntil: "domcontentloaded", timeout: PAGE_READY_TIMEOUT_MS });
-    await waitForThreadReady(page);
+    const target = threadId ? `${SITE}/thread/${encodeURIComponent(threadId)}` : NEW_THREAD_URL;
+    await page.goto(target, { waitUntil: "domcontentloaded", timeout: PAGE_READY_TIMEOUT_MS });
+    try {
+      await waitForThreadReady(page);
+    } catch (error) {
+      // A stale id must not fail the request: fall back to a fresh thread and
+      // let the caller persist whatever id comes back.
+      if (!threadId) throw error;
+      log?.debug?.("MUSE-WEB", `thread ${threadId} unusable (${error.message}) — starting a new one`);
+      await page.goto(NEW_THREAD_URL, { waitUntil: "domcontentloaded", timeout: PAGE_READY_TIMEOUT_MS });
+      await waitForThreadReady(page);
+    }
     return { key, page };
   }
 
@@ -526,7 +584,7 @@ export class MuseWebExecutor extends BaseExecutor {
       const opened = await this._openThreadPage(credentials, { signal, log });
       page = opened.page;
 
-      const base = await readChatState(page);
+      const base = await readChatBaseline(page);
       await attachImages(page, images);
       await sendPrompt(page, flatPrompt);
 
@@ -637,21 +695,29 @@ export class MuseWebExecutor extends BaseExecutor {
   }
 
   /**
-   * Generate image (or video) media. Media always starts a fresh thread.
-   * Used by the /v1/images/generations adapter (handlers/imageProviders/muse-web.js).
+   * Generate image (or video) media.
    *
-   * @returns {Promise<Array<{ b64: string, mime: string, width?: number, height?: number }>>}
+   * `threadId` continues an existing muse.ai thread instead of starting a new
+   * one, so the agent keeps the conversation's memory — the caller passes back
+   * the id it got last time. All `n` images share one thread (a design is one
+   * conversation). Used by the /v1/images/generations adapter
+   * (handlers/imageProviders/muse-web.js) and executeExecutorDrivenVideo().
+   *
+   * @returns {Promise<{ media: Array<{ b64: string, mime: string, width?: number, height?: number }>, threadId: string|null }>}
    */
-  async generateMedia({ prompt, kind = "image", size, duration, n = 1, images, credentials, signal, log }) {
+  async generateMedia({ prompt, kind = "image", size, duration, n = 1, images, credentials, signal, log, threadId = null }) {
     if (!prompt) throw new MuseWebUpstreamError("prompt is required for media generation");
     const mediaPrompt = buildMediaPrompt(prompt, kind, size, duration, Boolean(images?.length));
     const timeoutMs = kind === "video" ? VIDEO_TIMEOUT_MS : IMAGE_TIMEOUT_MS;
     const results = [];
+    let resolvedThreadId = threadId || null;
 
     for (let i = 0; i < Math.max(1, n); i++) {
-      const { page } = await this._openThreadPage(credentials, { signal, log });
+      // Only the first iteration can resume the caller's thread; the rest join
+      // the one this call just resolved so every image lands in one place.
+      const { page } = await this._openThreadPage(credentials, { signal, log, threadId: resolvedThreadId });
       try {
-        const base = await readChatState(page);
+        const base = await readChatBaseline(page);
         if (images?.length) await attachImages(page, images);
         await sendPrompt(page, mediaPrompt);
         const att = await waitForMedia({ page, base, kind, timeoutMs, signal, log });
@@ -662,11 +728,14 @@ export class MuseWebExecutor extends BaseExecutor {
           ...(att.w ? { width: att.w } : {}),
           ...(att.h ? { height: att.h } : {}),
         });
+        // muse mints the thread id on the first message, so it only appears in
+        // the URL after sending. Report it so the caller can persist it.
+        resolvedThreadId = resolvedThreadId || readThreadId(page);
       } finally {
         await page.close().catch(() => {});
       }
     }
-    return results;
+    return { media: results, threadId: resolvedThreadId };
   }
 }
 

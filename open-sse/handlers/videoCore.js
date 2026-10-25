@@ -49,7 +49,7 @@ async function executeExecutorDrivenVideo({ provider, rawBody, credentials, sign
 
   try {
     const apiKeyBefore = credentials?.apiKey;
-    const [media] = await executor.generateMedia({
+    const { media: produced, threadId } = await executor.generateMedia({
       prompt: parsed.prompt,
       kind: "video",
       size: parsed.size,
@@ -61,7 +61,11 @@ async function executeExecutorDrivenVideo({ provider, rawBody, credentials, sign
       credentials,
       signal,
       log,
+      // Continue an earlier conversation so the agent keeps the design context.
+      // The caller owns the id; it is echoed back below for it to persist.
+      threadId: parsed.thread_id || null,
     });
+    const [media] = produced;
     const dataUrl = `data:${media.mime || "video/mp4"};base64,${media.b64}`;
     // Cookies that rotate on use (Clerk `__client`) are mutated in place by the
     // executor — persist the new value so the chain does not drift.
@@ -77,6 +81,7 @@ async function executeExecutorDrivenVideo({ provider, rawBody, credentials, sign
           created: Math.floor(Date.now() / 1000),
           model: parsed.model || provider,
           status: "completed",
+          ...(threadId ? { thread_id: threadId } : {}),
           video: { url: dataUrl, ...(media.width ? { width: media.width } : {}), ...(media.height ? { height: media.height } : {}) },
         }),
         {

@@ -33,6 +33,13 @@ export const SKILLS = [
     icon: "image",
   },
   {
+    id: "9router-muse-thread",
+    name: "Muse Thread Continuity",
+    description: "Keep a muse.ai design identical across follow-up images and videos by continuing one thread with `thread_id` — the agent remembers the previous renders.",
+    endpoint: "/v1/images/generations",
+    icon: "linked_services",
+  },
+  {
     id: "9router-tts",
     name: "Text-to-Speech",
     description: "OpenAI / ElevenLabs / Edge / Google / Deepgram voices.",

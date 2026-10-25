@@ -48,6 +48,7 @@ When the user needs a specific capability, fetch that skill's `SKILL.md` from it
 |---|---|
 | Chat / code-gen | https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/9router-chat/SKILL.md |
 | Image generation | https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/9router-image/SKILL.md |
+| Muse thread continuity (design memory) | https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/9router-muse-thread/SKILL.md |
 | Text-to-speech | https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/9router-tts/SKILL.md |
 | Speech-to-text | https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/9router-stt/SKILL.md |
 | Embeddings | https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/9router-embeddings/SKILL.md |
