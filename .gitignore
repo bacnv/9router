@@ -89,7 +89,10 @@ graphify-out/*
 
 # Kiro local workspace state
 .kiro/
-9router-*
+# Packed `npm pack` tarballs (9router-0.5.75.tgz). Anchored: an unanchored
+# `9router-*` also matched every skills/9router-* directory, silently keeping
+# new skills out of git.
+/9router-*
 
 # Local sensitive / temp files
 .engine-token.txt
