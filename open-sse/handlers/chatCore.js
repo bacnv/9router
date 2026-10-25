@@ -238,6 +238,13 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     stripContinuityFields(translatedBody);
   }
 
+  // `thread_id` is a browser-session continuation hint, not part of any wire
+  // format, so no translator carries it across — it was silently dropped and
+  // every muse-web chat turn started a new thread. Carry it through explicitly.
+  if (body?.thread_id && !translatedBody.thread_id) {
+    translatedBody.thread_id = body.thread_id;
+  }
+
   // Tool normalization: MCP-equivalent built-in dedup (Claude clients) + same-name
   // dedup for DeepSeek models (upstream rejects duplicate tool names on all endpoints).
   if (Array.isArray(translatedBody.tools)) {

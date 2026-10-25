@@ -43,7 +43,17 @@ const POLL_INTERVAL_MS = 300;
 const STABLE_POLLS_DONE = 4;
 const STABLE_POLLS_FORCE = 12;
 const STALL_AFTER_MS = 15000;
-const FIRST_TOKEN_TIMEOUT_MS = 45000;
+// The agent often answers "let me check the workspace first" and then spends a
+// while actually doing it. A 45s ceiling cut off exactly the requests that
+// needed work — listing assets, regrouping scenes — while short questions from
+// memory answered instantly. Wait long enough for real work, and only give up
+// when the page shows no sign of life at all (see NO_ACTIVITY_TIMEOUT_MS).
+const FIRST_TOKEN_TIMEOUT_MS = 180000;
+// "Processing/Thinking/Analysing…" while the agent works. Seeing any of these
+// resets the no-activity clock, so a long-but-alive turn is never cut short.
+const WORKING_HINTS = ["thinking", "processing", "analysing", "analyzing", "working on"];
+// Nothing moved AND no working indicator for this long → the turn is dead.
+const NO_ACTIVITY_TIMEOUT_MS = 90000;
 const CHAT_TIMEOUT_MS = 300000;
 
 // muse.ai posts a completion sentence ("Here's your video…") a few seconds
@@ -64,12 +74,15 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function formatChatCompletion(content, model, finishReason = "stop") {
+// `threadId` rides on the response so the caller can persist it and continue
+// the same conversation next turn (9Router keeps no thread state of its own).
+function formatChatCompletion(content, model, finishReason = "stop", threadId = null) {
   return {
     id: `chatcmpl-muw-${Date.now()}`,
     object: "chat.completion",
     created: Math.floor(Date.now() / 1000),
     model,
+    ...(threadId ? { thread_id: threadId } : {}),
     choices: [
       {
         index: 0,
@@ -82,12 +95,13 @@ function formatChatCompletion(content, model, finishReason = "stop") {
   };
 }
 
-function formatStreamChunk(content, model, finishReason = null) {
+function formatStreamChunk(content, model, finishReason = null, threadId = null) {
   return {
     id: `chatcmpl-muw-${Date.now()}`,
     object: "chat.completion.chunk",
     created: Math.floor(Date.now() / 1000),
     model,
+    ...(threadId ? { thread_id: threadId } : {}),
     choices: [{ index: 0, delta: content ? { content } : {}, finish_reason: finishReason }],
   };
 }
@@ -282,6 +296,11 @@ async function pollChat({ page, base, signal, onDelta }) {
   let last = null;
   let stable = 0;
   let gotFirst = false;
+  // Liveness, not wall-clock: a turn may legitimately take minutes as long as
+  // the page keeps moving. Only a window with neither visible progress nor a
+  // working indicator means the turn died.
+  let lastActivityAt = started;
+  let lastSignature = "";
 
   while (true) {
     if (signal?.aborted) throw new Error("Request aborted");
@@ -290,18 +309,34 @@ async function pollChat({ page, base, signal, onDelta }) {
     if (!gotFirst && elapsed > FIRST_TOKEN_TIMEOUT_MS) {
       throw new MuseWebTimeoutError("no first token from assistant");
     }
+    if (Date.now() - lastActivityAt > NO_ACTIVITY_TIMEOUT_MS) {
+      throw new MuseWebTimeoutError("assistant stopped responding (no activity)");
+    }
     await sleep(POLL_INTERVAL_MS);
 
     const st = await readChatState(page);
     if (st.approval) {
       await denyApprovals(page);
+      lastActivityAt = Date.now();
       continue;
     }
     const text = st.lastText || "";
+    const tail = (st.tail || "").toLowerCase();
+    const signature = `${st.agentCount || 0}|${text.length}|${st.attachments?.length || 0}|${st.generating ? 1 : 0}`;
+    // Any of these means the page is alive: new bubble, more text, a new
+    // attachment, the stop button, or an explicit "working" indicator.
+    if (
+      signature !== lastSignature ||
+      st.generating ||
+      WORKING_HINTS.some((h) => tail.includes(h))
+    ) {
+      lastSignature = signature;
+      lastActivityAt = Date.now();
+    }
+
     const isNew = (st.agentCount || 0) > baseCount || (text && text !== baseText);
     if (!isNew || !text) {
-      const tail = st.tail || "";
-      if (elapsed > STALL_AFTER_MS && dom.STALL_HINTS.some((h) => tail.includes(h))) {
+      if (elapsed > STALL_AFTER_MS && dom.STALL_HINTS.some((h) => (st.tail || "").includes(h))) {
         throw new MuseWebTimeoutError("upstream workspace is stuck connecting");
       }
       continue;
@@ -581,12 +616,32 @@ export class MuseWebExecutor extends BaseExecutor {
     try {
       // Setup phase runs eagerly so auth/ready failures return a real HTTP
       // status instead of a stream that errors on first read.
-      const opened = await this._openThreadPage(credentials, { signal, log });
+      // `thread_id` continues an earlier conversation, exactly as image/video
+      // do — without it the chat turn lands in a fresh thread and cannot see
+      // the design context the caller has been building up.
+      const opened = await this._openThreadPage(credentials, {
+        signal,
+        log,
+        threadId: requestBody.thread_id || null,
+      });
       page = opened.page;
 
       const base = await readChatBaseline(page);
       await attachImages(page, images);
       await sendPrompt(page, flatPrompt);
+      // muse rewrites /thread/new to /thread/<id> only once the agent starts
+      // replying, which is well after sendPrompt returns. Poll for it instead
+      // of reading once — reading too early yielded null and the caller had no
+      // id to continue with.
+      const awaitThreadId = async (deadlineMs = 15000) => {
+        const end = Date.now() + deadlineMs;
+        while (Date.now() < end) {
+          const id = readThreadId(page);
+          if (id) return id;
+          await sleep(250);
+        }
+        return null;
+      };
 
       const closePage = async () => {
         signal?.removeEventListener("abort", onAbort);
@@ -597,6 +652,17 @@ export class MuseWebExecutor extends BaseExecutor {
         const encoder = new TextEncoder();
         const streamPage = page;
         page = null; // ownership moves into the stream
+        // Read the URL off the stream's own page: `page` is null by now, so a
+        // closure over it would always yield a null thread id.
+        const awaitStreamThreadId = async (deadlineMs = 5000) => {
+          const end = Date.now() + deadlineMs;
+          while (Date.now() < end) {
+            const id = readThreadId(streamPage);
+            if (id) return id;
+            await sleep(250);
+          }
+          return null;
+        };
         const readable = new ReadableStream(
           {
             async start(controller) {
@@ -611,8 +677,12 @@ export class MuseWebExecutor extends BaseExecutor {
                     );
                   },
                 });
+                // By the time the reply is stable the URL has been rewritten.
+                const settledThreadId = await awaitStreamThreadId();
                 controller.enqueue(
-                  encoder.encode(`data: ${JSON.stringify(formatStreamChunk("", modelId, "stop"))}\n\n`)
+                  encoder.encode(
+                    `data: ${JSON.stringify(formatStreamChunk("", modelId, "stop", settledThreadId))}\n\n`
+                  )
                 );
                 controller.enqueue(encoder.encode(SSE_DONE));
                 controller.close();
@@ -641,9 +711,11 @@ export class MuseWebExecutor extends BaseExecutor {
       }
 
       const responseText = await pollChat({ page, base, signal });
+      // The URL settles once the agent has replied; read it before closing.
+      const settledThreadId = await awaitThreadId(5000);
       await closePage();
       return {
-        response: new Response(JSON.stringify(formatChatCompletion(responseText, modelId)), {
+        response: new Response(JSON.stringify(formatChatCompletion(responseText, modelId, "stop", settledThreadId)), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         }),
