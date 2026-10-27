@@ -219,6 +219,23 @@ export const PROVIDER_PRICING = {
   gh: {
     "gpt-5.3-codex": { input: 1.75, output: 14.00, cached: 0.175, reasoning: 14.00, cache_creation: 1.75 },
   },
+  // Synthetic — per-1M rates derived from the per-token `pricing` block of
+  // GET https://api.synthetic.new/v1/models (2026-10-27). `infinite:*` is free.
+  synthetic: {
+    "syn:large:text":   { input: 0.6, output: 1.2, cached: 0.03, reasoning: 1.2 },
+    "syn:small:text":   { input: 0.1, output: 0.5, cached: 0.02, reasoning: 0.5 },
+    "syn:large:vision": { input: 3.0, output: 15.0, cached: 0.45, reasoning: 15.0 },
+    "syn:small:vision": { input: 0.6, output: 1.2, cached: 0.03, reasoning: 1.2 },
+    "hf:deepseek-ai/DeepSeek-V4.1-Flash":      { input: 0.6, output: 1.2, cached: 0.03, reasoning: 1.2 },
+    "hf:deepseek-ai/DeepSeek-V4.1-Flash-1017": { input: 0.6, output: 1.2, cached: 0.03, reasoning: 1.2 },
+    "hf:zai-org/GLM-5.3":       { input: 1.4, output: 4.4, cached: 0.26, reasoning: 4.4 },
+    "hf:zai-org/GLM-5.3-Flash": { input: 0.15, output: 0.5, cached: 0.04, reasoning: 0.5 },
+    "hf:zai-org/GLM-4.7-Flash": { input: 0.1, output: 0.5, cached: 0.02, reasoning: 0.5 },
+    "hf:moonshotai/Kimi-K3":    { input: 3.0, output: 15.0, cached: 0.45, reasoning: 15.0 },
+    "hf:Qwen/Qwen3.8-27B":      { input: 0.45, output: 2.2, cached: 0.09, reasoning: 2.2 },
+    "hf:openai/gpt-oss-120b":   { input: 0.1, output: 0.1, cached: 0.02, reasoning: 0.1 },
+    "hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4": { input: 0.3, output: 1.0, cached: 0.06, reasoning: 1.0 },
+  },
   // TokenRouter — exact rates from https://api.tokenrouter.com/api/pricing ($1/1M tokens).
   // Ratio→USD: input = model_ratio×2, output = model_ratio×completion_ratio×2.
   // These override the canonical MODEL_PRICING/PATTERN_PRICING, whose rates often

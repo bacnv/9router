@@ -26,6 +26,7 @@ import { resolveQoderCredentials } from "./qoderModels.js";
 import { getGlmUsage } from "./usage/glm.js";
 import { getCommandCodeUsage } from "./usage/commandcode.js";
 import { getCloudflareUsage } from "./usage/cloudflare.js";
+import { getSyntheticUsage } from "./usage/synthetic.js";
 import {
   getIflowUsage,
   getOllamaUsage,
@@ -79,6 +80,7 @@ const USAGE_HANDLERS = {
   cursor: (c) => getCursorUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
   // Counted locally, not upstream: Cloudflare's analytics API lags 9-15 min.
   "cloudflare-ai": (c) => getCloudflareUsage(c.connectionId, c.proxyOptions),
+  synthetic: (c) => getSyntheticUsage(c.apiKey, c.proxyOptions),
 };
 
 // Qoder intl/CN share one usage path: PATs must be exchanged to a job token

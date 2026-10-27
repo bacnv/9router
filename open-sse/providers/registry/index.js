@@ -149,6 +149,7 @@ import p152 from "./runcrate.js";
 import p153 from "./fci-ai.js";
 import p154 from "./charm.js";
 import p155 from "./fci-neo.js";
+import p156 from "./synthetic.js";
 export default [
   p0,
   p1,
@@ -298,4 +299,5 @@ export default [
   p153,
   p154,
   p155,
+  p156,
 ];

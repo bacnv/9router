@@ -9,7 +9,7 @@ import ollamaLocal from "./ollamaLocal.js";
 const OPENAI_COMPAT_PROVIDERS = [
   "openai", "openrouter", "mistral", "voyage-ai", "fireworks",
   "together", "nebius", "nvidia", "jina-ai",
-  "vercel-ai-gateway",
+  "vercel-ai-gateway", "synthetic",
 ];
 
 const ADAPTERS = {

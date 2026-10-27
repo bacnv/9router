@@ -424,6 +424,29 @@ export const PROVIDER_CAPABILITIES = {
   },
 };
 
+// Synthetic serves HF-hosted open models behind hf:-prefixed ids (plus syn:*
+// aliases), so the canonical exact lookup sees the bare name and would apply
+// another vendor's family entry (GLM-5.3 as zai's one-level `thinking`, Kimi as
+// kimi's levelMax, …). Keyed by the full id: the catalog's own modalities and
+// limits, reasoning on for every chat model. The per-model effort sets live on
+// the registry entries (`thinkingLevels`) — `max` is a hard 400 on the models
+// that omit it.
+PROVIDER_CAPABILITIES["synthetic"] = {
+  "syn:large:text":       { vision: true,  reasoning: true, contextWindow: 524288, maxOutput: 65536 },
+  "syn:small:text":       { vision: false, reasoning: true, contextWindow: 196608, maxOutput: 65536 },
+  "syn:large:vision":     { vision: true,  reasoning: true, contextWindow: 524288, maxOutput: 65536 },
+  "syn:small:vision":     { vision: true,  reasoning: true, contextWindow: 524288, maxOutput: 65536 },
+  "hf:deepseek-ai/DeepSeek-V4.1-Flash":       { vision: true,  reasoning: true, contextWindow: 524288, maxOutput: 65536 },
+  "hf:deepseek-ai/DeepSeek-V4.1-Flash-1017":  { vision: true,  reasoning: true, contextWindow: 524288, maxOutput: 65536 },
+  "hf:zai-org/GLM-5.3":       { vision: false, reasoning: true, contextWindow: 524288, maxOutput: 65536 },
+  "hf:zai-org/GLM-5.3-Flash": { vision: true,  reasoning: true, contextWindow: 524288, maxOutput: 65536 },
+  "hf:zai-org/GLM-4.7-Flash": { vision: false, reasoning: true, contextWindow: 196608, maxOutput: 65536 },
+  "hf:moonshotai/Kimi-K3":    { vision: true,  reasoning: true, contextWindow: 524288, maxOutput: 65536 },
+  "hf:Qwen/Qwen3.8-27B":      { vision: true,  reasoning: true, contextWindow: 262144, maxOutput: 65536 },
+  "hf:openai/gpt-oss-120b":   { vision: false, reasoning: true, contextWindow: 131072, maxOutput: 65536 },
+  "hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4": { vision: false, reasoning: true, contextWindow: 262144, maxOutput: 65536 },
+};
+
 // Qoder model capability table. The model ids are opaque (`dmodel`, `kmodel`,
 // `qmodel_38max`), so the name heuristics in PATTERN_CAPABILITIES match none of
 // them — without this table every Qoder model is reported text-only and an

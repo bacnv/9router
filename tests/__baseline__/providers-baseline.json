@@ -1303,5 +1303,17 @@
     "baseUrl": "https://api.runcrate.ai/v1/chat/completions",
     "validateUrl": "https://www.runcrate.ai/api/v1/billing/balance",
     "format": "openai"
+  },
+  "synthetic": {
+    "baseUrl": "https://api.synthetic.new/v1/chat/completions",
+    "validateUrl": "https://api.synthetic.new/v2/quotas",
+    "usage": {
+      "url": "https://api.synthetic.new/v2/quotas"
+    },
+    "thinkingFormat": "openai",
+    "quirks": {
+      "reasoningAliasFields": true
+    },
+    "format": "openai"
   }
 }
