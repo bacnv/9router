@@ -1298,5 +1298,10 @@
     "baseUrl": "https://token-api.fpt.ai/v1/chat/completions",
     "thinkingFormat": "openai",
     "format": "openai"
+  },
+  "runcrate": {
+    "baseUrl": "https://api.runcrate.ai/v1/chat/completions",
+    "validateUrl": "https://www.runcrate.ai/api/v1/billing/balance",
+    "format": "openai"
   }
 }

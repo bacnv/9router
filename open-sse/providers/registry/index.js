@@ -145,9 +145,10 @@ import p144 from "./muse-web.js";
 import p146 from "./chatgpt-web.js";
 import p147 from "./veoaifree-web.js";
 import p151 from "./uc-web.js";
-import p152 from "./fci-ai.js";
-import p153 from "./charm.js";
-import p154 from "./fci-neo.js";
+import p152 from "./runcrate.js";
+import p153 from "./fci-ai.js";
+import p154 from "./charm.js";
+import p155 from "./fci-neo.js";
 export default [
   p0,
   p1,
@@ -296,4 +297,5 @@ export default [
   p152,
   p153,
   p154,
+  p155,
 ];
