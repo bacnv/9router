@@ -279,7 +279,9 @@ function applyFormat(fmt, body, cfg, caps, supportedLevels, display) {
     case "openai": {
       if (none && canDisable) { body.reasoning_effort = "none"; break; }
       const level = toLevel(eff);
-      if (level) body.reasoning_effort = normalizeOpenAILevel(level, supportedLevels);
+      // A provider may collapse a level onto another on its wire (Synthetic's
+      // DeepSeek lane treats xhigh and max alike, and only accepts the latter).
+      if (level) body.reasoning_effort = normalizeOpenAILevel(caps.thinkingLevelAliases?.[level] || level, supportedLevels);
       break;
     }
     case "openai-responses": {

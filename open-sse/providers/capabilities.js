@@ -432,12 +432,12 @@ export const PROVIDER_CAPABILITIES = {
 // the registry entries (`thinkingLevels`) — `max` is a hard 400 on the models
 // that omit it.
 PROVIDER_CAPABILITIES["synthetic"] = {
-  "syn:large:text":       { vision: true,  reasoning: true, contextWindow: 524288, maxOutput: 65536 },
+  "syn:large:text":       { vision: true,  reasoning: true, contextWindow: 524288, maxOutput: 65536, thinkingLevelAliases: { xhigh: "max" } },
   "syn:small:text":       { vision: false, reasoning: true, contextWindow: 196608, maxOutput: 65536 },
   "syn:large:vision":     { vision: true,  reasoning: true, contextWindow: 524288, maxOutput: 65536 },
-  "syn:small:vision":     { vision: true,  reasoning: true, contextWindow: 524288, maxOutput: 65536 },
-  "hf:deepseek-ai/DeepSeek-V4.1-Flash":       { vision: true,  reasoning: true, contextWindow: 524288, maxOutput: 65536 },
-  "hf:deepseek-ai/DeepSeek-V4.1-Flash-1017":  { vision: true,  reasoning: true, contextWindow: 524288, maxOutput: 65536 },
+  "syn:small:vision":     { vision: true,  reasoning: true, contextWindow: 524288, maxOutput: 65536, thinkingLevelAliases: { xhigh: "max" } },
+  "hf:deepseek-ai/DeepSeek-V4.1-Flash":       { vision: true,  reasoning: true, contextWindow: 524288, maxOutput: 65536, thinkingLevelAliases: { xhigh: "max" } },
+  "hf:deepseek-ai/DeepSeek-V4.1-Flash-1017":  { vision: true,  reasoning: true, contextWindow: 524288, maxOutput: 65536, thinkingLevelAliases: { xhigh: "max" } },
   "hf:zai-org/GLM-5.3":       { vision: false, reasoning: true, contextWindow: 524288, maxOutput: 65536 },
   "hf:zai-org/GLM-5.3-Flash": { vision: true,  reasoning: true, contextWindow: 524288, maxOutput: 65536 },
   "hf:zai-org/GLM-4.7-Flash": { vision: false, reasoning: true, contextWindow: 196608, maxOutput: 65536 },

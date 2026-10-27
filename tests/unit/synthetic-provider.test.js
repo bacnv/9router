@@ -61,6 +61,25 @@ describe("synthetic thinking levels mirror the upstream effort enum", () => {
     expect(out.reasoning_effort).toBe(effort);
   });
 
+  it.each([
+    "syn:large:text",
+    "syn:small:vision",
+    "hf:deepseek-ai/DeepSeek-V4.1-Flash",
+    "hf:deepseek-ai/DeepSeek-V4.1-Flash-1017",
+  ])("%s: xhigh becomes max (the DeepSeek lane's top tier)", (model) => {
+    expect(getThinkingLevels(P, model)).not.toContain("xhigh");
+    const out = applyThinking(FORMATS.OPENAI, model, { reasoning_effort: "xhigh" }, P);
+    expect(out.reasoning_effort).toBe("max");
+  });
+
+  it("leaves xhigh alone on every other provider", () => {
+    // The alias lives on the model's capability row, not in the shared normalizer,
+    // so a provider that really does accept xhigh must still receive it.
+    expect(applyThinking(FORMATS.OPENAI, "hf:zai-org/GLM-5.3", { reasoning_effort: "xhigh" }, P).reasoning_effort).toBe("xhigh");
+    expect(applyThinking(FORMATS.OPENAI, "claude-opus-5", { reasoning_effort: "xhigh" }, "anthropic").reasoning_effort).toBe("xhigh");
+    expect(applyThinking(FORMATS.OPENAI, "gemini-3.8-flash-high", { reasoning_effort: "xhigh" }, "antigravity").reasoning_effort).toBe("xhigh");
+  });
+
   it("clamps max to xhigh where the model omits it (400 upstream)", () => {
     for (const model of ["syn:small:text", "hf:openai/gpt-oss-120b", "hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4"]) {
       expect(getThinkingLevels(P, model)).not.toContain("max");

@@ -40,14 +40,16 @@ export default {
   // syn:* aliases are what Synthetic recommends (pinned ids 404 when rotated).
   // thinkingLevels are the payload's own `reasoning_parameters.efforts`; max on
   // the models that omit it is a hard 400 upstream, so the declared set is the
-  // clamp the picker and thinkingUnified both need.
+  // clamp the picker and thinkingUnified both need. The DeepSeek-backed ids
+  // publish xhigh, but it and max land in the same place there (as on DeepSeek's
+  // own API), so the top tier is declared as max alone and xhigh folds into it.
   models: [
-    { id: "syn:large:text", name: "Syn Large Text (DeepSeek V4.1 Flash)", thinkingLevels: ["none", "low", "high", "xhigh", "max"] },
+    { id: "syn:large:text", name: "Syn Large Text (DeepSeek V4.1 Flash)", thinkingLevels: ["none", "low", "high", "max"] },
     { id: "syn:small:text", name: "Syn Small Text (GLM 4.7 Flash)", thinkingLevels: ["none", "low", "medium", "high"] },
     { id: "syn:large:vision", name: "Syn Large Vision (Kimi K3)", thinkingLevels: ["low", "high", "max"] },
-    { id: "syn:small:vision", name: "Syn Small Vision (DeepSeek V4.1 Flash)", thinkingLevels: ["none", "low", "high", "xhigh", "max"] },
-    { id: "hf:deepseek-ai/DeepSeek-V4.1-Flash", name: "DeepSeek V4.1 Flash", thinkingLevels: ["none", "low", "high", "xhigh", "max"] },
-    { id: "hf:deepseek-ai/DeepSeek-V4.1-Flash-1017", name: "DeepSeek V4.1 Flash 10/17", thinkingLevels: ["none", "low", "high", "xhigh", "max"] },
+    { id: "syn:small:vision", name: "Syn Small Vision (DeepSeek V4.1 Flash)", thinkingLevels: ["none", "low", "high", "max"] },
+    { id: "hf:deepseek-ai/DeepSeek-V4.1-Flash", name: "DeepSeek V4.1 Flash", thinkingLevels: ["none", "low", "high", "max"] },
+    { id: "hf:deepseek-ai/DeepSeek-V4.1-Flash-1017", name: "DeepSeek V4.1 Flash 10/17", thinkingLevels: ["none", "low", "high", "max"] },
     { id: "hf:zai-org/GLM-5.3", name: "GLM 5.3", thinkingLevels: ["low", "high", "max"] },
     { id: "hf:zai-org/GLM-5.3-Flash", name: "GLM 5.3 Flash", thinkingLevels: ["low", "high", "max"] },
     { id: "hf:zai-org/GLM-4.7-Flash", name: "GLM 4.7 Flash", thinkingLevels: ["none", "low", "medium", "high"] },
