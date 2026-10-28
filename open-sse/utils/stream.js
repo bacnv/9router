@@ -31,6 +31,17 @@ const STREAM_MODE = {
 // forever when the upstream stalls with no usage trailer and no [DONE].
 const PENDING_COMPLETION_FLUSH_MS = 3000;
 
+// Grace period before persisting usage when the terminal chunk is seen but the
+// upstream has not closed yet. Some lanes (Synthetic/vLLM) split usage across two
+// chunks: the finish_reason chunk carries prompt/completion only, and a trailing
+// choices:[] chunk carries prompt_tokens_details.cached_tokens. Finalizing on the
+// first chunk loses the cache counts — cost then bills the whole prompt at the
+// full input rate. Client-facing bytes never depend on this: finalizeStream()
+// only logs/persists.
+// ponytail: a fixed grace window; a trailer later than this still falls back to
+// the cache-less usage. Upgrade path is to wait for the usage trailer explicitly.
+const EARLY_FINALIZE_DELAY_MS = 250;
+
 /**
  * Create unified SSE transform stream
  * @param {object} options
@@ -100,6 +111,7 @@ export function createSSEStream(options = {}) {
   let streamDoneSent = false;  // track duplicate [DONE] across transform + flush
   let finalized = false;
   let completionFlushTimer = null;
+  let earlyFinalizeTimer = null;
 
   // Lane quirk: upstream streams thinking under the OpenRouter aliases
   // (`reasoning` / `reasoning_details[]`) instead of reasoning_content — OpenCode
@@ -111,6 +123,7 @@ export function createSSEStream(options = {}) {
   // closes right after the terminal event cancels the reader, and flush() never runs.
   const finalizeStream = () => {
     if (completionFlushTimer) { clearTimeout(completionFlushTimer); completionFlushTimer = null; }
+    if (earlyFinalizeTimer) { clearTimeout(earlyFinalizeTimer); earlyFinalizeTimer = null; }
     if (finalized) return;
     finalized = true;
 
@@ -134,6 +147,19 @@ export function createSSEStream(options = {}) {
         thinking: accumulatedThinking
       }, finalUsage, ttftAt);
     }
+  };
+
+  // A client may close right after the terminal chunk, before upstream EOF — so
+  // don't wait for flush() to persist. But don't persist on the terminal chunk
+  // either: give the upstream a moment to deliver a separate usage trailer (see
+  // EARLY_FINALIZE_DELAY_MS). The timer lives outside the stream, so it still runs
+  // after a downstream cancel; flush() clears it and finalizes immediately.
+  const scheduleEarlyFinalize = () => {
+    if (earlyFinalizeTimer || finalized) return;
+    earlyFinalizeTimer = setTimeout(() => {
+      earlyFinalizeTimer = null;
+      finalizeStream();
+    }, EARLY_FINALIZE_DELAY_MS);
   };
 
   // Emit the deferred response.completed now — at [DONE], or when the watchdog
@@ -318,7 +344,7 @@ export function createSSEStream(options = {}) {
           reqLogger?.appendConvertedChunk?.(output);
           controller.enqueue(sharedEncoder.encode(output));
           // Clients may close immediately after the terminal event, before upstream EOF.
-          if (responsesTerminal || chatTerminal) finalizeStream();
+          if (responsesTerminal || chatTerminal) scheduleEarlyFinalize();
           continue;
         }
 
@@ -485,7 +511,7 @@ export function createSSEStream(options = {}) {
         // Skip while a completion deferral is open: finalizeStream() clears the watchdog
         // armed just above, which would emit response.completed before the usage trailer
         // is parsed. That path owns its own finalization (flush, or the watchdog).
-        if (state.finishReason && !deferringCompletion) finalizeStream();
+        if (state.finishReason && !deferringCompletion) scheduleEarlyFinalize();
       }
     },
 
