@@ -24,6 +24,15 @@ function getRuntimeDir() {
   return path.join(getWritableDataDir(), "runtime");
 }
 
+// A static node:module import gets stubbed by the server bundler, so
+// createRequire must be fetched at runtime for published builds to work.
+let createRequirePromise;
+function getCreateRequire() {
+  createRequirePromise ??= import(/* webpackIgnore: true */ "node:module")
+    .then((mod) => mod.createRequire || mod.default?.createRequire);
+  return createRequirePromise;
+}
+
 function isModuleMissing(error) {
   const code = String(error?.code || "");
   return code === "MODULE_NOT_FOUND" || code === "ERR_MODULE_NOT_FOUND";
@@ -50,39 +59,8 @@ function npmInstall(pkg, version) {
   });
 }
 
-const inflight = new Map();
-
-// webpack rewrites the ESM named import `createRequire` to `void 0` in the
-// server bundle, so the second resolution step below died with "Cannot read
-// properties of undefined (reading 'resolve')" — a first-run web login (no
-// runtime dir yet) failed instead of falling through to the npm install.
-// Reading it off the module namespace at runtime keeps the binding intact.
-async function requireFrom(runtimeDir) {
-  const nodeModule = await import("node:module");
-  const createRequire = nodeModule.createRequire || nodeModule.default?.createRequire;
-  return createRequire(path.join(runtimeDir, "package.json"));
-}
-
-async function load(pkg) {
-  // Every import() below needs webpackIgnore: without it webpack replaces the
-  // call with a stub that throws "Cannot find module '<url>'" — the URL is not
-  // in the bundle's module map, so a runtime-installed path can never load.
-  // 1) Resolvable from the app install (dev machine / traced standalone).
-  try {
-    return await import(/* webpackIgnore: true */ pkg);
-  } catch (error) {
-    if (!isModuleMissing(error)) throw error;
-  }
-  // 2) Already present in the runtime dir from a previous install.
+async function installIntoRuntime(pkg, version) {
   const dir = getRuntimeDir();
-  try {
-    const runtimeRequire = await requireFrom(dir);
-    return await import(/* webpackIgnore: true */ pathToFileURL(runtimeRequire.resolve(pkg)).href);
-  } catch (error) {
-    if (!isModuleMissing(error)) throw error;
-  }
-  // 3) Download on demand, then import from the runtime dir.
-  const version = LAZY_DEP_VERSIONS[pkg] || "latest";
   const res = await npmInstall(pkg, version);
   if (!res.ok) {
     const reason = (res.stderr.match(/npm ERR! ?(.+)/) || [])[1] || res.stderr.split("\n").filter(Boolean).pop() || "unknown npm error";
@@ -91,8 +69,45 @@ async function load(pkg) {
       `install it manually: cd "${dir}" && npm install ${pkg}@${version}`
     );
   }
-  const runtimeRequire = await requireFrom(dir);
+}
+
+const inflight = new Map();
+
+// Every import() into the runtime dir needs webpackIgnore: without it webpack
+// replaces the call with a stub that throws "Cannot find module '<url>'" — the
+// URL is not in the bundle's module map, so a runtime-installed path can never
+// load.
+async function runtimeImport(pkg) {
+  const createRequire = await getCreateRequire();
+  const runtimeRequire = createRequire(path.join(getRuntimeDir(), "package.json"));
   return import(/* webpackIgnore: true */ pathToFileURL(runtimeRequire.resolve(pkg)).href);
+}
+
+async function load(pkg) {
+  // 1) Resolvable from the app install (dev machine / traced standalone).
+  try {
+    return await import(/* webpackIgnore: true */ pkg);
+  } catch (error) {
+    if (!isModuleMissing(error)) throw error;
+  }
+  // 2) Already present in the runtime dir from a previous install.
+  try {
+    return await runtimeImport(pkg);
+  } catch (error) {
+    if (!isModuleMissing(error)) throw error;
+  }
+  // 3) Download on demand, then import from the runtime dir.
+  const version = LAZY_DEP_VERSIONS[pkg] || "latest";
+  await installIntoRuntime(pkg, version);
+  try {
+    return await runtimeImport(pkg);
+  } catch (error) {
+    // npm exits 0 even on partially-extracted installs; wipe and retry once.
+    if (!isModuleMissing(error)) throw error;
+    fs.rmSync(path.join(getRuntimeDir(), "node_modules", pkg), { recursive: true, force: true });
+    await installIntoRuntime(pkg, version);
+    return runtimeImport(pkg);
+  }
 }
 
 export function loadRuntimeDep(pkg) {
