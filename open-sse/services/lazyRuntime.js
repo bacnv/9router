@@ -73,52 +73,65 @@ async function installIntoRuntime(pkg, version) {
 
 const inflight = new Map();
 
-// Every import() into the runtime dir needs webpackIgnore: without it webpack
-// replaces the call with a stub that throws "Cannot find module '<url>'" — the
-// URL is not in the bundle's module map, so a runtime-installed path can never
-// load.
-async function runtimeImport(pkg) {
-  const createRequire = await getCreateRequire();
-  const runtimeRequire = createRequire(path.join(getRuntimeDir(), "package.json"));
-  return import(/* webpackIgnore: true */ pathToFileURL(runtimeRequire.resolve(pkg)).href);
+// createRequire.resolve applies the CJS "require" condition, which returns the
+// CJS entry for packages that ship both (playwright-core: require→index.js,
+// import→index.mjs). Prefer the ESM entry so named exports survive the file-URL
+// import below.
+function resolveRuntimeEntry(runtimeRequire, pkg) {
+  try {
+    return runtimeRequire.resolve(pkg, { conditions: ["import"] });
+  } catch {
+    return runtimeRequire.resolve(pkg);
+  }
+}
+
+// Importing a CJS entry via file URL bypasses the exports map, and
+// cjs-module-lexer cannot detect named exports through chained re-exports
+// (`module.exports = require('./coreBundle').inprocess.playwright`), so
+// consumers destructuring `{ chromium }` get undefined. Merge `default`'s
+// own properties as a fallback.
+function unwrapCjsNamespace(mod) {
+  if (mod?.default && typeof mod.default === "object") {
+    return { ...mod.default, ...mod };
+  }
+  return mod;
 }
 
 async function load(pkg) {
   // 1) Resolvable from the app install (dev machine / traced standalone).
   try {
-    return await import(/* webpackIgnore: true */ pkg);
+    return await import(/* webpackIgnore: true */ /* @vite-ignore */ pkg);
   } catch (error) {
     if (!isModuleMissing(error)) throw error;
   }
   // 2) Already present in the runtime dir from a previous install.
+  const createRequire = await getCreateRequire();
+  const runtimeRequire = createRequire(path.join(getRuntimeDir(), "package.json"));
   try {
-    return await runtimeImport(pkg);
+    const entry = resolveRuntimeEntry(runtimeRequire, pkg);
+    return unwrapCjsNamespace(await import(/* webpackIgnore: true */ /* @vite-ignore */ pathToFileURL(entry).href));
   } catch (error) {
     if (!isModuleMissing(error)) throw error;
   }
   // 3) Download on demand, then import from the runtime dir.
   const version = LAZY_DEP_VERSIONS[pkg] || "latest";
+  const runtimeImport = async () =>
+    unwrapCjsNamespace(await import(/* webpackIgnore: true */ /* @vite-ignore */ pathToFileURL(resolveRuntimeEntry(runtimeRequire, pkg)).href));
   await installIntoRuntime(pkg, version);
   try {
-    return await runtimeImport(pkg);
+    return await runtimeImport();
   } catch (error) {
     // npm exits 0 even on partially-extracted installs; wipe and retry once.
     if (!isModuleMissing(error)) throw error;
     fs.rmSync(path.join(getRuntimeDir(), "node_modules", pkg), { recursive: true, force: true });
     await installIntoRuntime(pkg, version);
-    return runtimeImport(pkg);
+    return runtimeImport();
   }
 }
 
 export function loadRuntimeDep(pkg) {
   if (!inflight.has(pkg)) {
-    // `load` always returns an ESM namespace. These deps are CommonJS, so their
-    // real exports sit on `default` — callers that destructure (e.g.
-    // `const { chromium } = await loadRuntimeDep("playwright-core")`) would
-    // otherwise get undefined and fail with "cannot read properties of
-    // undefined (reading 'launchPersistentContext')". Unwrap the CJS shape.
-    const promise = load(pkg).then((mod) => mod?.default ?? mod);
-    inflight.set(pkg, promise.finally(() => inflight.delete(pkg)));
+    inflight.set(pkg, load(pkg).finally(() => inflight.delete(pkg)));
   }
   return inflight.get(pkg);
 }
