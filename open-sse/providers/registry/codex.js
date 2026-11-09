@@ -9,7 +9,7 @@ const GPT_6_LITE_THINKING_LEVELS = ["low", "medium", "high", "xhigh", "max"];
 // connection "free plan" seeds providerSpecificData.enabledModels with this
 // list, and the account can then be corrected by hand without touching this
 // file. Everything else in the registry above is rejected upstream with 400.
-export const CODEX_FREE_MODELS = ["gpt-6-luna"];
+export const CODEX_FREE_MODELS = ["gpt-6-luna", "gpt-6-luna[1m]"];
 
 export default {
   id: "codex",
