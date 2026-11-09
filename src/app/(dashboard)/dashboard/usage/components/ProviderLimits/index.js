@@ -1178,6 +1178,24 @@ export default function ProviderLimits() {
                           {getConnectionSecondaryLabel(conn)}
                         </p>
                       ) : null}
+                      {/* ChatGPT plan. The usage API omits plan_type for free
+                          accounts, so the marker set in Edit is the only way a
+                          free account can be told apart from an unlabelled one. */}
+                      {isCodex && quota?.plan && (
+                        <div className="mt-1 flex flex-wrap items-center gap-1">
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                              quota.plan === "free"
+                                ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                                : "bg-brand-500/10 text-brand-600 dark:text-brand-300"
+                            }`}
+                          >
+                            {quota.plan === "free"
+                              ? "Free plan"
+                              : quota.plan.charAt(0).toUpperCase() + quota.plan.slice(1)}
+                          </span>
+                        </div>
+                      )}
                       {conn.provider === "kiro" && (
                         <div className="mt-1 flex flex-wrap items-center gap-1">
                           <span className="rounded-full bg-brand-500/10 px-2 py-0.5 text-[10px] font-semibold text-brand-600 dark:text-brand-300">
