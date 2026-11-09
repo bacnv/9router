@@ -104,7 +104,7 @@ function getCodexSparkRateLimit(data) {
   }) || null;
 }
 
-export async function getCodexUsage(accessToken, proxyOptions = null) {
+export async function getCodexUsage(accessToken, proxyOptions = null, providerSpecificData = null) {
   try {
     const response = await proxyAwareFetch(CODEX_CONFIG.usageUrl, {
       method: "GET",
@@ -130,7 +130,10 @@ export async function getCodexUsage(accessToken, proxyOptions = null) {
     appendCodexQuotaWindows(quotas, "spark", sparkRateLimit);
 
     return {
-      plan: data.plan_type || data.summary?.plan || "unknown",
+      // The usage API omits plan_type for free accounts, which is exactly the
+      // case the dashboard needs to label. Fall back to the plan the operator
+      // marked on the connection (Edit → Free plan).
+      plan: data.plan_type || data.summary?.plan || providerSpecificData?.chatgptPlanType || "unknown",
       limitReached: getCodexRateLimitBody(normalRateLimit)?.limit_reached || false,
       reviewLimitReached: getCodexRateLimitBody(reviewRateLimit)?.limit_reached || false,
       sparkLimitReached: getCodexRateLimitBody(sparkRateLimit)?.limit_reached || false,

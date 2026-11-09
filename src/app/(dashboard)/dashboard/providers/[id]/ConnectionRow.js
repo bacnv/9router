@@ -217,6 +217,11 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
             <Badge variant="default" size="sm">
               {authLabel}
             </Badge>
+            {connection.providerSpecificData?.chatgptPlanType === "free" && (
+              <Badge variant="warning" size="sm">
+                Free plan
+              </Badge>
+            )}
             {hasAnyProxy && (
               <Badge variant={proxyBadgeVariant} size="sm">
                 Proxy

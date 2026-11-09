@@ -6,7 +6,9 @@ import Modal from "@/shared/components/Modal";
 import Input from "@/shared/components/Input";
 import Button from "@/shared/components/Button";
 import Badge from "@/shared/components/Badge";
+import Toggle from "@/shared/components/Toggle";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
+import { CODEX_FREE_MODELS } from "open-sse/providers/registry/codex.js";
 import Select from "@/shared/components/Select";
 
 export default function EditConnectionModal({ isOpen, connection, proxyPools, onSave, onClose }) {
@@ -22,6 +24,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
     organization: "",
   });
   const [cloudflareData, setCloudflareData] = useState({ accountId: "" });
+  const [freePlan, setFreePlan] = useState(false);
   const [awsData, setAwsData] = useState({ profile: "", region: "", accessKeyId: "", sessionToken: "" });
   const [clearAwsSessionToken, setClearAwsSessionToken] = useState(false);
   const [region, setRegion] = useState("");
@@ -50,6 +53,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
       if (connection.provider === "cloudflare-ai" && connection.providerSpecificData) {
         setCloudflareData({ accountId: connection.providerSpecificData.accountId || "" });
       }
+      setFreePlan(connection.providerSpecificData?.chatgptPlanType === "free");
       if (AI_PROVIDERS?.[connection.provider]?.credentialForm === "aws") {
         const psd = connection.providerSpecificData || {};
         setAwsData({
@@ -74,6 +78,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   const isOAuth = connection?.authType === "oauth";
   const isAzure = connection?.provider === "azure";
   const isCloudflareAi = connection?.provider === "cloudflare-ai";
+  const isCodex = connection?.provider === "codex";
   const usesAwsCredentialForm = AI_PROVIDERS?.[connection?.provider]?.credentialForm === "aws";
   const isCompatible = connection
     ? (isOpenAICompatibleProvider(connection.provider) || isAnthropicCompatibleProvider(connection.provider))
@@ -198,7 +203,30 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
       if (providerRegions && region) {
         updates.providerSpecificData = buildRegionSpecificData();
       }
-      
+      // Codex plan marker. The usage API omits plan_type for free accounts and
+      // free accounts only accept a few models, so the operator states the plan
+      // here; turning the toggle on seeds enabledModels with the free list, and
+      // turning it off clears the marker without touching a hand-edited list.
+      // Codex plan marker. The usage API omits plan_type for free accounts and
+      // free accounts only accept a few models, so the operator states the plan
+      // here; turning the toggle on seeds enabledModels with the free list, and
+      // turning it off clears the marker plus that seeded list. The PUT route
+      // merges providerSpecificData, so a key must be sent explicitly (null/[])
+      // to be cleared — omitting it would silently keep the stored value.
+      if (isCodex) {
+        const wasFree = connection.providerSpecificData?.chatgptPlanType === "free";
+        const seeded = connection.providerSpecificData?.enabledModels || [];
+        const psd = { ...(connection.providerSpecificData || {}) };
+        if (freePlan) {
+          psd.chatgptPlanType = "free";
+          if (!seeded.length) psd.enabledModels = [...CODEX_FREE_MODELS];
+        } else if (wasFree) {
+          psd.chatgptPlanType = null;
+          psd.enabledModels = [];
+        }
+        updates.providerSpecificData = psd;
+      }
+
       await onSave(updates);
     } finally {
       setSaving(false);
@@ -345,6 +373,21 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
             onChange={(e) => setRegion(e.target.value)}
             options={providerRegions.map((r) => ({ value: r.id, label: r.label }))}
           />
+        )}
+
+        {isCodex && (
+          <div className="rounded-lg border border-border bg-sidebar/50 p-3">
+            <Toggle
+              checked={freePlan}
+              onChange={setFreePlan}
+              label="ChatGPT Free plan"
+              description={
+                freePlan
+                  ? `Free accounts are limited to: ${CODEX_FREE_MODELS.join(", ")}. You can adjust the list under this account's models.`
+                  : "Mark this account as ChatGPT Free so the dashboard labels it and limits it to the free model list."
+              }
+            />
+          </div>
         )}
 
         {!isCompatible && !isAzure && !isCloudflareAi && (

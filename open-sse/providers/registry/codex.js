@@ -5,6 +5,12 @@ import { withCodexReviewModels } from "../models/helpers.js";
 const CODEX_CLI_VERSION = "0.159.1";
 const GPT_6_LITE_THINKING_LEVELS = ["low", "medium", "high", "xhigh", "max"];
 
+// Models a ChatGPT Free Codex account can call. Only a default: marking a
+// connection "free plan" seeds providerSpecificData.enabledModels with this
+// list, and the account can then be corrected by hand without touching this
+// file. Everything else in the registry above is rejected upstream with 400.
+export const CODEX_FREE_MODELS = ["gpt-6-luna"];
+
 export default {
   id: "codex",
   priority: 30,
