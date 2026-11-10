@@ -22,7 +22,11 @@ export function mapStainlessArch() {
 
 // Anthropic API version (single source — reused across claude-format providers/executors)
 export const ANTHROPIC_API_VERSION = "2023-06-01";
-export const CLAUDE_CLI_VERSION = "2.1.280";
+// Impersonated Claude Code build. Anthropic gates newer models on client version
+// ("Claude Code 2.1.280 does not support this model; version 2.1.290 or newer is
+// required" — claude_code_version_too_old), so this must track a real, recent CLI
+// release. Bump it whenever a model starts returning that 400.
+export const CLAUDE_CLI_VERSION = "2.1.322";
 
 // Shared Claude-compatible API headers (reused across claude-format providers)
 export const CLAUDE_API_HEADERS = {
