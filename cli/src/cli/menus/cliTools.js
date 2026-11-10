@@ -15,8 +15,9 @@ const COLORS = {
 
 // Claude model types with defaults (matching Web UI)
 const CLAUDE_MODEL_TYPES = [
-  { id: "sonnet", name: "Sonnet", envKey: "ANTHROPIC_DEFAULT_SONNET_MODEL", defaultValue: "cc/claude-sonnet-4-5-20250929" },
-  { id: "opus",   name: "Opus",   envKey: "ANTHROPIC_DEFAULT_OPUS_MODEL",   defaultValue: "cc/claude-opus-4-5-20251101" },
+  { id: "fable",  name: "Fable",  envKey: "ANTHROPIC_DEFAULT_FABLE_MODEL",  defaultValue: "cc/claude-fable-5-2" },
+  { id: "opus",   name: "Opus",   envKey: "ANTHROPIC_DEFAULT_OPUS_MODEL",   defaultValue: "cc/claude-opus-5" },
+  { id: "sonnet", name: "Sonnet", envKey: "ANTHROPIC_DEFAULT_SONNET_MODEL", defaultValue: "cc/claude-sonnet-5" },
   { id: "haiku",  name: "Haiku",  envKey: "ANTHROPIC_DEFAULT_HAIKU_MODEL",  defaultValue: "cc/claude-haiku-4-5-20251001" },
 ];
 
@@ -140,8 +141,9 @@ async function showClaudeCodeMenu(port, breadcrumb = []) {
     breadcrumb,
     headerContent: buildClaudeHeader,
     refresh: async () => ({
-      sonnet: await getClaudeModel("ANTHROPIC_DEFAULT_SONNET_MODEL"),
+      fable:  await getClaudeModel("ANTHROPIC_DEFAULT_FABLE_MODEL"),
       opus:   await getClaudeModel("ANTHROPIC_DEFAULT_OPUS_MODEL"),
+      sonnet: await getClaudeModel("ANTHROPIC_DEFAULT_SONNET_MODEL"),
       haiku:  await getClaudeModel("ANTHROPIC_DEFAULT_HAIKU_MODEL"),
     }),
     items: [
@@ -150,7 +152,7 @@ async function showClaudeCodeMenu(port, breadcrumb = []) {
         action: async () => { await claudeQuickSetup(port); return true; }
       },
       {
-        label: (d) => `Sonnet → ${d.sonnet}`,
+        label: (d) => `Fable → ${d.fable}`,
         action: async () => { await claudeSelectModel(CLAUDE_MODEL_TYPES[0], port); return true; }
       },
       {
@@ -158,8 +160,12 @@ async function showClaudeCodeMenu(port, breadcrumb = []) {
         action: async () => { await claudeSelectModel(CLAUDE_MODEL_TYPES[1], port); return true; }
       },
       {
-        label: (d) => `Haiku → ${d.haiku}`,
+        label: (d) => `Sonnet → ${d.sonnet}`,
         action: async () => { await claudeSelectModel(CLAUDE_MODEL_TYPES[2], port); return true; }
+      },
+      {
+        label: (d) => `Haiku → ${d.haiku}`,
+        action: async () => { await claudeSelectModel(CLAUDE_MODEL_TYPES[3], port); return true; }
       },
       {
         label: "Reset to Default",
