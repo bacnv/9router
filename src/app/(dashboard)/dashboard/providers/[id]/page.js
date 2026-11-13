@@ -510,30 +510,31 @@ export default function ProviderDetailPage() {
     const connection = connections.find((item) => item.isActive !== false);
     if (!connection?.id) {
       setLiveModels([]);
-      if (providerId === "zed") setLiveModelsError(null);
+      setLiveModelsError(null);
       return;
     }
 
     let cancelled = false;
-    if (providerId === "zed") setLiveModelsError(null);
+    setLiveModelsError(null);
     fetch(`/api/providers/${connection.id}/models`, { cache: "no-store" })
       .then(async (res) => ({ ok: res.ok, data: await res.json().catch(() => null) }))
       .then(({ ok, data }) => {
         if (cancelled) return;
         if (ok && Array.isArray(data?.models) && data.models.length > 0) {
           setLiveModels(data.models);
-          if (providerId === "zed" && data?.warning) setLiveModelsError(data.warning);
+          if (data?.warning) setLiveModelsError(data.warning);
           return;
         }
-        if (providerId === "zed") {
-          setLiveModels([]);
-          setLiveModelsError(data?.warning || data?.error || "Zed returned no live models.");
-        }
+        // Every live-catalog provider degrades the same way: drop the stale list
+        // and say why. Previously only zed did, so a failing claude/commandcode
+        // account left the previous (or static) catalog on screen unlabelled.
+        setLiveModels([]);
+        setLiveModelsError(data?.warning || data?.error || "The provider returned no live models.");
       })
       .catch(() => {
-        if (!cancelled && providerId === "zed") {
+        if (!cancelled) {
           setLiveModels([]);
-          setLiveModelsError("Failed to reach the Zed model catalog.");
+          setLiveModelsError("Failed to reach the model catalog.");
         }
       });
 

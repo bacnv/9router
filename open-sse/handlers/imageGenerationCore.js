@@ -165,7 +165,11 @@ export async function handleImageGenerationCore({
       log?.warn?.("IMAGE", `${provider.toUpperCase()} | ${model} | retrying with fallback request`);
       try {
         const fallbackHeaders = adapter.buildHeaders(credentials, fallbackBody, model, body);
-        providerResponse = await fetch(url, {
+        // Recompute: a token refresh above may have changed what buildUrl derives
+        // (region/account), and the pre-refresh `url` would send the retry to the
+        // stale endpoint.
+        const fallbackUrl = adapter.buildUrl(model, credentials, body);
+        providerResponse = await fetch(fallbackUrl, {
           method: "POST",
           headers: fallbackHeaders,
           body: serializeRequestBody(fallbackBody),
