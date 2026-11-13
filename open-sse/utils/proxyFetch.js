@@ -477,8 +477,12 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
   // Keep the spoofed Claude Code version current (new models require a minimum CLI version).
   // Refresh in the background: the request uses the version already known, so an
   // unreachable npm registry can never add latency to the chat path.
+  //
+  // Skipped under strictProxy: the lookup uses rawFetch (no dispatcher), so it
+  // would be the one outbound request that ignores the tunnel a user configured
+  // to carry everything. The bundled floor stays in force instead.
   if (hasClaudeCliHeader(options?.headers)) {
-    void ensureClaudeCliVersion(rawFetch);
+    if (proxyOptions?.strictProxy !== true) void ensureClaudeCliVersion(rawFetch);
     options = { ...options, headers: applyClaudeCliVersion(options.headers) };
   }
   const targetUrl = typeof url === "string" ? url : url.toString();
