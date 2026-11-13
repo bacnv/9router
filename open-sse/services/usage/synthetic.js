@@ -67,10 +67,10 @@ export async function getSyntheticUsage(apiKey = null, proxyOptions = null) {
     }
 
     const quotas = {};
+    // One entry per row: the dashboard's generic parser iterates every key, so an
+    // alias key would render the same row twice. The display name lives on `name`.
     const subRow = percentRow("Subscription requests", sub.limit, sub.requests, sub.renewsAt);
-    // Two keys on purpose: upstream's contract test reads quotas.Requests,
-    // the fork's dashboard rows (and older caches) read the display name.
-    if (subRow) { quotas.Requests = subRow; quotas["Subscription requests"] = subRow; }
+    if (subRow) quotas.Requests = subRow;
 
     const searchRow = percentRow(
       "Search (hourly)",
@@ -78,7 +78,7 @@ export async function getSyntheticUsage(apiKey = null, proxyOptions = null) {
       data?.search?.hourly?.requests,
       data?.search?.hourly?.renewsAt,
     );
-    if (searchRow) { quotas.Search = searchRow; quotas["Search (hourly)"] = searchRow; }
+    if (searchRow) quotas.Search = searchRow;
 
     const weekly = data?.planWeeklyLimit;
     const percentRemaining = toFiniteNumber(weekly?.percentRemaining, NaN);
@@ -97,7 +97,6 @@ export async function getSyntheticUsage(apiKey = null, proxyOptions = null) {
         unlimited: false,
       };
       quotas.PlanWeekly = weeklyRow;
-      quotas["Plan window (weekly)"] = weeklyRow;
     }
 
     // A limit of 0 means the key has no subscription window — never render it
