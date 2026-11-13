@@ -61,7 +61,7 @@ describe("combo presets", () => {
     });
     expect(byName.fable).toEqual({
       name: "fable",
-      models: ["cc/claude-fable-5"],
+      models: ["cc/claude-fable-5-2"],
     });
     expect(byName.default).toEqual({
       name: "default",

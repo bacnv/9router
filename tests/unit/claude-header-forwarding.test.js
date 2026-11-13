@@ -30,6 +30,9 @@ describe("DefaultExecutor.buildHeaders() — claude provider", () => {
       headers["Anthropic-Version"] === "2023-06-01" ||
       headers["anthropic-version"] === "2023-06-01";
     expect(hasVersion).toBe(true);
+    // Asserted against the constant, not a literal: the bundled floor is
+    // rewritten at fetch time by claudeCliVersion.js, so a hardcoded string
+    // breaks on every version bump for no signal.
     expect(headers["User-Agent"]).toBe(`claude-cli/${CLAUDE_CLI_VERSION} (external, sdk-cli)`);
   });
 

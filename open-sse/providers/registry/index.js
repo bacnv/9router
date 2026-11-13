@@ -147,10 +147,11 @@ import p147 from "./veoaifree-web.js";
 import p151 from "./uc-web.js";
 import p152 from "./runcrate.js";
 import p153 from "./nace.js";
-import p154 from "./fci-ai.js";
-import p155 from "./charm.js";
-import p156 from "./fci-neo.js";
-import p157 from "./synthetic.js";
+import p154 from "./sensenova-intl.js";
+import p155 from "./synthetic.js";
+import p156 from "./fci-ai.js";
+import p157 from "./charm.js";
+import p158 from "./fci-neo.js";
 export default [
   p0,
   p1,
@@ -302,4 +303,5 @@ export default [
   p155,
   p156,
   p157,
+  p158,
 ];

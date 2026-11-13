@@ -2,7 +2,7 @@ import { withCodexReviewModels } from "../models/helpers.js";
 
 // Codex CLI version seen by OpenAI's backend — single source for the Version /
 // User-Agent identity headers. Bump when the installed codex CLI is upgraded.
-const CODEX_CLI_VERSION = "0.159.1";
+const CODEX_CLI_VERSION = "0.167.1";
 const GPT_6_LITE_THINKING_LEVELS = ["low", "medium", "high", "xhigh", "max"];
 
 // Models a ChatGPT Free Codex account can call. Only a default: marking a

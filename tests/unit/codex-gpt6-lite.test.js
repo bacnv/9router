@@ -225,7 +225,10 @@ describe("Codex GPT-6 Sol/Luna transport", () => {
     const body = JSON.parse(options.body);
     expect(url).toBe("https://chatgpt.com/backend-api/codex/responses");
     expect(options.headers["x-openai-internal-codex-responses-lite"]).toBe("true");
+    // CODEX_CLI_VERSION comes from the registry via appConstants, so a version
+    // bump lands in one place instead of every assertion.
     expect(options.headers.version).toBe(CODEX_CLI_VERSION);
+    expect(options.headers["User-Agent"]).toBe(`codex_cli_rs/${CODEX_CLI_VERSION}`);
     expect(body.model).toBe("gpt-6-luna");
     expect(body.instructions).toBe("");
     expect(body.input[0].type).toBe("additional_tools");

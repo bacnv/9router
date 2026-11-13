@@ -19,6 +19,9 @@ export default {
   },
   category: "apikey",
   authType: "apikey",
+  authModes: [
+    "apikey",
+  ],
   transport: {
     baseUrl: "https://api.synthetic.new/v1/chat/completions",
     // /v1/models answers 200 for any Bearer, so only the quota call can tell a

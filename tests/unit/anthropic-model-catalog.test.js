@@ -24,7 +24,7 @@ describe("anthropic model metadata", () => {
     expect(getPricingForModel("anthropic", "claude-opus-5"))
       .toEqual({ input: 5, output: 25, cached: 0.5, reasoning: 25, cache_creation: 6.25 });
     expect(getPricingForModel("anthropic", "claude-fable-5-1"))
-      .toEqual({ input: 10, output: 50, cached: 0.25, reasoning: 50, cache_creation: 12.5 });
+      .toEqual({ input: 10, output: 50, cached: 1, reasoning: 50, cache_creation: 12.5 });
   });
 
   it("marks Fable 5 adaptive-always-on", () => {
