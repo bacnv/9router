@@ -392,7 +392,16 @@ function applyFormat(fmt, body, cfg, caps, supportedLevels, display, model = "",
     case "ollama": {
       if (none && canDisable) { body.think = false; break; }
       const level = toLevel(eff);
-      body.think = level === "xhigh" ? "max" : level === "auto" ? true : level;
+      let want = level === "xhigh" ? "max" : level === "auto" ? true : level;
+      // A model pinned to one level on its registry entry (thinkingLevels: ["max"],
+      // e.g. DeepSeek V4.1 Flash on the cloud lane) gets that level no matter what
+      // the client asked for: Ollama flattens the intermediate tiers, so forwarding
+      // "low" would advertise a choice that does nothing. Only a single-entry pin
+      // is enforced; models that declare a real range keep the client's ask.
+      if (supportedLevels?.length === 1 && supportedLevels[0] !== "none") {
+        want = supportedLevels[0] === "max" ? "max" : supportedLevels[0];
+      }
+      body.think = want;
       break;
     }
     case "kimi": {
