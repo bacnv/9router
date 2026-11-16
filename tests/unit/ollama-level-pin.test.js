@@ -23,9 +23,11 @@ describe("ollama thinking: single-level pins", () => {
     expect(think(model, { mode: "auto" })).toBe("max");
   });
 
-  it.each(PINNED)("%s still honours an explicit disable", (model) => {
-    // None is not a level — it turns thinking off, which the lane supports.
-    expect(think(model, { mode: "none" })).toBe(false);
+  it.each(PINNED)("%s pins even an explicit disable to max", (model) => {
+    // Same rule as Codex's normalizeReasoningEffort for GPT-6 Luna: a single-level
+    // pin is absolute, "none" included. Disable would otherwise send think:false
+    // and make the picker's single option a lie.
+    expect(think(model, { mode: "none" })).toBe("max");
   });
 
   it("leaves models with a real level range alone", () => {

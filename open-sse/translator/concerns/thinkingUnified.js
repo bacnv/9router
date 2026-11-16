@@ -390,18 +390,17 @@ function applyFormat(fmt, body, cfg, caps, supportedLevels, display, model = "",
       break;
     }
     case "ollama": {
+      // A model pinned to one level on its registry entry (thinkingLevels: ["max"],
+      // e.g. DeepSeek V4.1 Flash on the cloud lane) takes that level no matter what
+      // the client asked for — including "none". Same rule as Codex's
+      // normalizeReasoningEffort, which pins GPT-6 Luna; Ollama flattens the
+      // intermediate tiers, so forwarding any other value only pretends the choice
+      // matters. Models that declare a real range keep the client's ask.
+      const pinned = supportedLevels?.length === 1 ? supportedLevels[0] : null;
+      if (pinned) { body.think = pinned === "max" ? "max" : pinned; break; }
       if (none && canDisable) { body.think = false; break; }
       const level = toLevel(eff);
-      let want = level === "xhigh" ? "max" : level === "auto" ? true : level;
-      // A model pinned to one level on its registry entry (thinkingLevels: ["max"],
-      // e.g. DeepSeek V4.1 Flash on the cloud lane) gets that level no matter what
-      // the client asked for: Ollama flattens the intermediate tiers, so forwarding
-      // "low" would advertise a choice that does nothing. Only a single-entry pin
-      // is enforced; models that declare a real range keep the client's ask.
-      if (supportedLevels?.length === 1 && supportedLevels[0] !== "none") {
-        want = supportedLevels[0] === "max" ? "max" : supportedLevels[0];
-      }
-      body.think = want;
+      body.think = level === "xhigh" ? "max" : level === "auto" ? true : level;
       break;
     }
     case "kimi": {
