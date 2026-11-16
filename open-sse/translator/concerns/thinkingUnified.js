@@ -5,6 +5,7 @@
 import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 import { getThinkingLevels } from "../../providers/thinkingLevels.js";
 import { PROVIDERS } from "../../providers/index.js";
+import { PROVIDER_MODELS, PROVIDER_ID_TO_ALIAS } from "../../config/providerModels.js";
 import { LEVEL_TO_BUDGET, budgetToLevel, effortToBudget, effortToThinkingLevel } from "./thinking.js";
 
 // Map a target wire-format to its native thinking format (when capability has none).
@@ -273,7 +274,7 @@ function stripAll(body) {
 }
 
 // Apply unified thinking config to body in the resolved provider-native format.
-function applyFormat(fmt, body, cfg, caps, supportedLevels, display, model = "", budgetPassthrough = false) {
+function applyFormat(fmt, body, cfg, caps, supportedLevels, display, model = "", budgetPassthrough = false, provider = null) {
   const none = cfg.mode === "none";
   const canDisable = caps.thinkingCanDisable !== false;
   // Model cannot disable thinking → clamp "none" to minimal effort instead.
@@ -390,14 +391,15 @@ function applyFormat(fmt, body, cfg, caps, supportedLevels, display, model = "",
       break;
     }
     case "ollama": {
-      // A model pinned to one level on its registry entry (thinkingLevels: ["max"],
-      // e.g. DeepSeek V4.1 Flash on the cloud lane) takes that level no matter what
-      // the client asked for — including "none". Same rule as Codex's
-      // normalizeReasoningEffort, which pins GPT-6 Luna; Ollama flattens the
-      // intermediate tiers, so forwarding any other value only pretends the choice
-      // matters. Models that declare a real range keep the client's ask.
-      const pinned = supportedLevels?.length === 1 ? supportedLevels[0] : null;
-      if (pinned) { body.think = pinned === "max" ? "max" : pinned; break; }
+      // The cloud lane exposes the full level list in the picker but only serves
+      // the top tier usefully, so the registry marks those ids with
+      // reasoningEffortPin: every requested level, "none" included, is sent as
+      // that one. Same outcome as Codex's normalizeReasoningEffort pins GPT-6
+      // Luna, but expressed separately from thinkingLevels so the picker stays
+      // complete.
+      const pin = (PROVIDER_MODELS[PROVIDER_ID_TO_ALIAS[provider] || provider] || [])
+        .find((entry) => entry.id === model)?.reasoningEffortPin;
+      if (pin) { body.think = pin === "max" ? "max" : pin; break; }
       if (none && canDisable) { body.think = false; break; }
       const level = toLevel(eff);
       body.think = level === "xhigh" ? "max" : level === "auto" ? true : level;
@@ -497,6 +499,6 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
   // An OpenAI-shaped client's ask arrives via the captured intent instead.
   const display = typeof body.thinking?.display === "string" ? body.thinking.display : intent?.display;
   stripAll(body);
-  applyFormat(fmt, body, cfg, caps, supportedLevels, display, cleanModel, isOpenAICompatibleNode(provider));
+  applyFormat(fmt, body, cfg, caps, supportedLevels, display, cleanModel, isOpenAICompatibleNode(provider), provider);
   return body;
 }

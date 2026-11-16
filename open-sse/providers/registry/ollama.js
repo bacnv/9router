@@ -32,14 +32,14 @@ export default {
     { id: "qwen3.5", name: "Qwen3.5" },
     { id: "minimax-m3", name: "MiniMax M3" },
     { id: "minimax-m3.1-flash", name: "MiniMax M3.1 Flash" },
-    // Pinned to a single effort, like Codex's GPT-6 Luna: the cloud lane only
-    // serves the top tier usefully, so every requested level collapses to max
-    // rather than advertising a range Ollama silently flattens anyway.
-    { id: "deepseek-v4.1-flash:cloud", name: "DeepSeek V4.1 Flash", thinkingLevels: ["max"] },
+    // Every level stays selectable; the wire send is clamped to "max" for these
+    // two ids in thinkingUnified's ollama branch. Declaring a one-entry
+    // thinkingLevels here would shrink the picker too, which is not what we want.
+    { id: "deepseek-v4.1-flash:cloud", name: "DeepSeek V4.1 Flash", reasoningEffortPin: "max" },
     { id: "clef", name: "Clef", kind: "systemone" },
     { id: "clef-flash", name: "Clef Flash", kind: "systemone" },
     { id: "clef:cloud", name: "Clef (Cloud)", kind: "systemone" },
-    { id: "deepseek-v4.1-flash:1017-cloud", name: "DeepSeek V4.1 Flash 1017", thinkingLevels: ["max"] },
+    { id: "deepseek-v4.1-flash:1017-cloud", name: "DeepSeek V4.1 Flash 1017", reasoningEffortPin: "max" },
   ],
   serviceKinds: ["llm", "webFetch", "systemone"],
   systemoneConfig: {
