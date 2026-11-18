@@ -15,15 +15,32 @@
 // account fails identically and the combo pays a full failover before landing
 // somewhere that accepts it (#3922).
 //
+// The same validator implements only a subset of JSON Schema keywords. A tool
+// whose `parameters` carries `propertyNames` answers
+//
+//   400 Invalid schema for 'tools[2].parameters': Unimplemented keys:
+//       ["propertyNames"]. Compilation limits apply to all strict schemas…
+//   code: invalid_json_schema
+//
+// which is fatal on every Codex account, so the combo pays a full failover for
+// a request this provider can never accept. Dropping the keyword loosens the
+// constraint; it never changes the schema's structure.
+//
 // Scope guardrail (#3667): this is NOT a global schema sanitizer. Providers
 // that do support `\p{...}` keep the constraint untouched — the strip runs only
-// on the Codex dispatch path, and only on `pattern` strings that actually
-// contain a property escape. Everything else in the schema (including valid
-// patterns) passes through byte-identical.
+// on the Codex dispatch path. Within it, only constraints Codex has actually
+// been observed to reject are removed: `pattern` strings containing a property
+// escape, and the `propertyNames` keyword. Everything else (including valid
+// patterns and every other keyword) passes through byte-identical. Add to
+// UNSUPPORTED_KEYWORDS only with a captured 400 in hand.
 
 // `\p{...}` / `\P{...}` with an odd number of preceding backslashes — an even
 // count means the backslash itself is escaped, so `\\p{Cc}` is a literal "p".
 const UNICODE_PROPERTY_ESCAPE = /(^|[^\\])(\\\\)*\\[pP]\{/;
+
+// JSON Schema keywords Codex's strict-schema compiler reports as unimplemented.
+// Verified against a live 400: `Unimplemented keys: ["propertyNames"]`.
+const UNSUPPORTED_KEYWORDS = new Set(["propertyNames"]);
 
 export function hasUnicodePropertyEscape(pattern) {
   return typeof pattern === "string" && UNICODE_PROPERTY_ESCAPE.test(pattern);
@@ -50,6 +67,11 @@ function stripNode(node, stats) {
   const next = {};
   for (const [key, value] of Object.entries(node)) {
     if (key === "pattern" && hasUnicodePropertyEscape(value)) {
+      stats.removed++;
+      changed = true;
+      continue;
+    }
+    if (UNSUPPORTED_KEYWORDS.has(key)) {
       stats.removed++;
       changed = true;
       continue;
