@@ -2,7 +2,7 @@ import { withCodexReviewModels } from "../models/helpers.js";
 
 // Codex CLI version seen by OpenAI's backend — single source for the Version /
 // User-Agent identity headers. Bump when the installed codex CLI is upgraded.
-const CODEX_CLI_VERSION = "0.167.1";
+const CODEX_CLI_VERSION = "0.169.1";
 const GPT_6_LITE_THINKING_LEVELS = ["low", "medium", "high", "xhigh", "max"];
 
 // Models a ChatGPT Free Codex account can call. Only a default: marking a
@@ -59,9 +59,12 @@ export default {
     },
   },
   models: [
-    // Codex 0.159.1's catalog ranks this first (priority 1), so it leads the list.
-    // The catalog also advertises "ultra", but that level auto-delegates to subagents —
-    // a transport the gateway does not carry — so it stops at "max" like its siblings.
+    // Codex 0.169.1's catalog ranks 6.2 first (sol, then astra), so they lead the
+    // list. Every 6.x model advertises six efforts; "ultra" is left out because it
+    // auto-delegates to subagents — a transport the gateway does not carry — so the
+    // set stops at "max" like its siblings.
+    { id: "gpt-6.2-sol", name: "GPT 6.2 Sol", responsesLite: true, thinkingLevels: GPT_6_LITE_THINKING_LEVELS },
+    { id: "gpt-6.2-astra", name: "GPT 6.2 Astra", responsesLite: true, thinkingLevels: GPT_6_LITE_THINKING_LEVELS },
     { id: "gpt-6.1-sol", name: "GPT 6.1 Sol", responsesLite: true, thinkingLevels: GPT_6_LITE_THINKING_LEVELS },
     { id: "gpt-6.1-terra", name: "GPT 6.1 Terra", responsesLite: true, thinkingLevels: GPT_6_LITE_THINKING_LEVELS },
     { id: "gpt-6-astra", name: "GPT 6.0 Astra" },
