@@ -27,7 +27,7 @@ export const ANTHROPIC_API_VERSION = "2023-06-01";
 // and outbound claude-cli/x.y.z headers are rewritten in proxyAwareFetch.
 // The fork's manual bump to 2.1.290 is subsumed: upstream resolves the latest
 // release itself and never drops below this floor.
-export const CLAUDE_CLI_VERSION = "2.1.322";
+export const CLAUDE_CLI_VERSION = "2.1.328";
 setClaudeCliFallback(CLAUDE_CLI_VERSION);
 
 // Shared Claude-compatible API headers (reused across claude-format providers)

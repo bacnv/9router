@@ -95,6 +95,33 @@ export class DefaultExecutor extends BaseExecutor {
     super(provider, PROVIDERS[provider] || PROVIDERS.openai);
   }
 
+  // Anthropic reports the real window reset in `anthropic-ratelimit-unified-<window>-reset`
+  // (epoch seconds) on the 429 itself. Without it the lock falls back to the error-rule
+  // backoff, which starts at 2s — so an exhausted account is retried every couple of
+  // seconds for the whole window instead of being parked until it actually resets.
+  // Prefer the *exhausted* window: a 429 names either 5h or 7d via its `-status` header.
+  parseError(response, bodyText) {
+    if (response.status !== 429 || !response.headers?.get) return super.parseError(response, bodyText);
+
+    const windows = ["5h", "7d", "7d_oi"];
+    let resetsAtMs = null;
+    for (const w of windows) {
+      const status = response.headers.get(`anthropic-ratelimit-unified-${w}-status`);
+      if (status !== "rejected" && status !== "exceeded") continue;
+      const reset = parseInt(response.headers.get(`anthropic-ratelimit-unified-${w}-reset`) || "", 10);
+      if (!Number.isFinite(reset) || reset * 1000 <= Date.now()) continue;
+      resetsAtMs = reset * 1000;
+      break;
+    }
+    if (!resetsAtMs) {
+      const retryAfter = parseInt(response.headers.get("retry-after") || "", 10);
+      if (Number.isFinite(retryAfter) && retryAfter > 0) resetsAtMs = Date.now() + retryAfter * 1000;
+    }
+
+    const base = super.parseError(response, bodyText);
+    return resetsAtMs ? { ...base, resetsAtMs } : base;
+  }
+
   transformRequest(model, body, stream, credentials) {
     let transformed = this.applyJsonSchemaFallback(this.applyNousAttribution(model, body, stream, credentials));
 

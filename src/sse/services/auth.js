@@ -286,8 +286,13 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     newBackoffLevel = 0;
   } else if (resetsAtMs && resetsAtMs > Date.now()) {
     shouldFallback = true;
-    // Antigravity quota API provides exact per-model resetAt. Do not truncate it.
-    cooldownMs = resolveProviderId(provider) === "antigravity"
+    // Antigravity's quota API and Anthropic's ratelimit-unified headers both report the
+    // real window boundary, so truncating them parks an exhausted account for less than
+    // the window and retries it over and over — for a 5h window, a 30m cap means ten
+    // pointless upstream calls. Providers whose reset is a heuristic keep the cap.
+    const providerId = resolveProviderId(provider);
+    const authoritative = providerId === "antigravity" || providerId === "claude" || providerId === "anthropic";
+    cooldownMs = authoritative
       ? resetsAtMs - Date.now()
       : Math.min(resetsAtMs - Date.now(), MAX_RATE_LIMIT_COOLDOWN_MS);
     newBackoffLevel = 0;

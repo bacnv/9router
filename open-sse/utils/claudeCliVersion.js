@@ -14,7 +14,7 @@ const VERSION_RE = /^\d+\.\d+\.\d+$/;
 
 // Sanity floor: a module that loads before shared.js must still send a real
 // version, never a placeholder Anthropic would reject as too old.
-let fallback = "2.1.322";
+let fallback = "2.1.328";
 let current = null;
 let nextCheckAt = 0;
 let inflight = null;
