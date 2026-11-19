@@ -8,6 +8,7 @@ import {
   isValidApiKey,
 } from "../services/auth.js";
 import { handleAntigravityQuotaError, clearAntigravityStrikes } from "../services/antigravityQuota.js";
+import { resolveClaudeQuotaReset } from "../services/claudeQuotaError.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
@@ -22,6 +23,7 @@ import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { detectFormatByEndpoint } from "open-sse/translator/formats.js";
 import { resolveSessionIdentity } from "open-sse/utils/sessionManager.js";
+import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
@@ -368,6 +370,29 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         refreshedCredentials.accessToken, credentials.providerSpecificData
       );
       if (quotaResetMs) resetsAtMs = quotaResetMs;
+    }
+
+    // Claude's 429 carries no reset hint (no retry-after, no ratelimit-unified
+    // headers), so without this the model lock falls back to 2s and the combo
+    // retries an exhausted model for the rest of its window. The OAuth usage API
+    // does know: model-scoped weekly limits arrive as `weekly <model> (7d)`.
+    let claudeQuotaResetMs = null;
+    if ((provider === "claude" || provider === "anthropic") && result.status === 429) {
+      // Same proxy wiring the usage route uses, with strictProxy off: a quota
+      // lookup is diagnostics, and failing it must never fail the request.
+      const proxyConfig = await resolveConnectionProxyConfig(credentials.providerSpecificData);
+      claudeQuotaResetMs = await resolveClaudeQuotaReset(
+        { ...credentials, accessToken: refreshedCredentials.accessToken || credentials.accessToken },
+        model,
+        {
+          connectionProxyEnabled: proxyConfig.connectionProxyEnabled === true,
+          connectionProxyUrl: proxyConfig.connectionProxyUrl || "",
+          connectionNoProxy: proxyConfig.connectionNoProxy || "",
+          vercelRelayUrl: proxyConfig.vercelRelayUrl || "",
+          strictProxy: false,
+        },
+      );
+      if (claudeQuotaResetMs) resetsAtMs = claudeQuotaResetMs;
     }
 
     // Exhausted Antigravity model is blocked only in RAM cache until upstream resetAt.
