@@ -1,9 +1,10 @@
 // Ensure proxyFetch is loaded to patch globalThis.fetch
 import "open-sse/index.js";
 
-import { getProviderConnectionById } from "@/lib/localDb";
+import { getProviderConnectionById, updateProviderConnection } from "@/lib/localDb";
 import { consumeCodexRateLimitResetCredit, getCodexRateLimitResetCredits } from "open-sse/services/usage.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
+import { buildResetQuotaStateUpdate } from "open-sse/services/accountFallback.js";
 import { refreshAndUpdateCredentials } from "../route.js";
 
 const AUTH_EXPIRED_PATTERNS = ["expired", "authentication", "unauthorized", "401", "re-authorize"];
@@ -145,6 +146,14 @@ export async function POST(request, { params }) {
       } catch (retryError) {
         console.warn(`[Codex Reset Credits] force refresh failed: ${retryError.message}`);
       }
+    }
+
+    // A spent credit refills the upstream windows; the modelLock_* rows written by the
+    // 429 that led here know nothing about it. Clear them or the account stays skipped
+    // until the stale expiry. A still-exhausted window re-locks on its next 429.
+    if (consumeResult.ok) {
+      await updateProviderConnection(connectionId, buildResetQuotaStateUpdate(connection))
+        .catch((e) => console.warn(`[Codex Reset Credits] cleared upstream, but lock cleanup failed: ${e.message}`));
     }
 
     return getResponseForConsumeResult(consumeResult, redeemRequestId);

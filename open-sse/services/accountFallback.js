@@ -238,3 +238,22 @@ export function applyErrorState(account, status, errorText) {
     status: "error"
   };
 }
+
+/**
+ * Clear every lock and error field on a connection after its upstream quota was
+ * refilled (a spent reset grant/credit). The limits are back, but the failure that
+ * wrote modelLock_<model> is a row in our DB — leave it and account selection keeps
+ * skipping the connection until the stale expiry, which reads to the user as
+ * "quota is back but requests are still blocked". Safe to over-clear: a window that
+ * is still exhausted re-locks on its next 429 with a fresh reset time.
+ */
+export function buildResetQuotaStateUpdate(connection) {
+  return {
+    ...buildClearModelLocksUpdate(connection),
+    testStatus: "active",
+    lastError: null,
+    errorCode: null,
+    lastErrorAt: null,
+    backoffLevel: 0,
+  };
+}
