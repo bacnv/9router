@@ -217,6 +217,7 @@ export function transformCreateResponseStreamToSSE(responseStream, model) {
   const arguedCalls = new Set();
   let hasToolCalls = false;
   let emittedRole = false;
+  let sawRefusalDelta = false;
 
   return new ReadableStream({
     async start(controller) {
@@ -255,8 +256,17 @@ export function transformCreateResponseStreamToSSE(responseStream, model) {
             sseChunk(emittedRole ? { content: event.delta } : { role: "assistant", content: event.delta })
           );
           emittedRole = true;
+          sawRefusalDelta = true;
         } else if (type === "response.refusal.done" && typeof event.refusal === "string" && event.refusal) {
-          controller.enqueue(sseChunk({ content: event.refusal }));
+          // `refusal.done` repeats the whole text that `refusal.delta` already streamed;
+          // forwarding it duplicates every refused answer in the client transcript. It
+          // is only the sole carrier when the upstream sends no deltas at all.
+          if (!sawRefusalDelta) {
+            controller.enqueue(
+              sseChunk(emittedRole ? { content: event.refusal } : { role: "assistant", content: event.refusal })
+            );
+            emittedRole = true;
+          }
         }
 
         // 4. Function call initiation

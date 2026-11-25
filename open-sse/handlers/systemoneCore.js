@@ -151,7 +151,10 @@ export async function handleSystemoneCore({
 
   // Cloudflare's REST API wraps the answer as { result: {...}, success, errors, messages }.
   // Callers speak System One, so hand them the inner result like any other provider's.
-  if (responseBody?.result?.answers && !responseBody.answers) {
+  // Match on the envelope, not on a specific payload key: decision models reply with
+  // `answers`, extraction models (clairic) with `values`, and keying off `answers`
+  // alone left the latter wrapped and its usage unrecorded.
+  if (responseBody?.result && typeof responseBody.result === "object" && !Array.isArray(responseBody.result)) {
     responseBody = responseBody.result;
   }
 

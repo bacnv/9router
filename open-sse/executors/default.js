@@ -26,18 +26,23 @@ function setAuth(headers, spec, token) {
   headers[spec.header] = spec.scheme === "bearer" ? `Bearer ${token}` : token;
 }
 
+// Header names are case-insensitive on the wire, so a registry transport that spells it
+// "Anthropic-Version" (CLAUDE_API_HEADERS) would otherwise get a second, differently-cased
+// copy of the same header — and Anthropic rejects the doubled value as malformed.
+const hasHeader = (headers, name) => Object.keys(headers).some((k) => k.toLowerCase() === name);
+
 // Resolve auth onto headers from a descriptor.
 function applyAuth(headers, desc, credentials) {
   if (desc.combined) {
     // combined providers always set the header (legacy behavior, incl. noAuth → "Bearer undefined")
     setAuth(headers, desc, credentials.apiKey || credentials.accessToken);
-    if (desc.anthropicVersion && !headers["anthropic-version"]) headers["anthropic-version"] = ANTHROPIC_API_VERSION;
+    if (desc.anthropicVersion && !hasHeader(headers, "anthropic-version")) headers["anthropic-version"] = ANTHROPIC_API_VERSION;
     return;
   }
   // split apiKey/oauth: set only the matching branch (legacy: anthropic-compatible skips when both absent)
   if (credentials.apiKey) setAuth(headers, desc.apiKey, credentials.apiKey);
   else if (credentials.accessToken) setAuth(headers, desc.oauth, credentials.accessToken);
-  if (desc.anthropicVersion && !headers["anthropic-version"]) headers["anthropic-version"] = ANTHROPIC_API_VERSION;
+  if (desc.anthropicVersion && !hasHeader(headers, "anthropic-version")) headers["anthropic-version"] = ANTHROPIC_API_VERSION;
 }
 
 // Provider-specific header quirks kept as small hooks (not pure auth).

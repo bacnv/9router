@@ -332,7 +332,10 @@ describe("Kiro CreateResponse (/v1/responses) adapter", () => {
         expect(crSpy).not.toHaveBeenCalled();
         expect(res.response.status).toBe(429);
       } finally {
-        process.env.NINEROUTER_KIRO_CREATE_RESPONSE = oldEnv;
+        // Assigning undefined coerces to the string "undefined", which then keeps
+        // crMode !== "off" for every later test in this worker.
+        if (oldEnv === undefined) delete process.env.NINEROUTER_KIRO_CREATE_RESPONSE;
+        else process.env.NINEROUTER_KIRO_CREATE_RESPONSE = oldEnv;
       }
     });
 

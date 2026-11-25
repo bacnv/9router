@@ -103,7 +103,15 @@ export function getModelParams(aliasOrId, modelId) {
 // a tier-preset entry whose upstreamModelId carries the same "(level)" — e.g. ag
 // gemini-4-hydrogen-xhigh — so standalone ids such as ws/gpt-5.4-xhigh never get
 // picked up by a reasoning_effort sent for gpt-5.4.
-const TIER_FALLBACKS = { xhigh: ["xhigh", "high"], max: ["max", "xhigh", "high"], minimal: ["low"] };
+// Null-prototype on purpose: `level` comes from client input, and a bare object
+// literal inherits Object.prototype — `TIER_FALLBACKS["constructor"]` and
+// `["__proto__"]` then return a function instead of undefined, and the tier walk
+// throws instead of falling back to the base model.
+const TIER_FALLBACKS = Object.assign(Object.create(null), {
+  xhigh: ["xhigh", "high"],
+  max: ["max", "xhigh", "high"],
+  minimal: ["low"],
+});
 
 function findTierEntry(models, baseId, level, aliasOrId) {
   const tiers = TIER_FALLBACKS[level] || [level];

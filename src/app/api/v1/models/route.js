@@ -610,10 +610,16 @@ export async function buildModelsList(kindFilter, options = {}) {
       const mergedModelIds = Array.from(new Set([...modelIds, ...customModelIds, ...aliasModelIds]));
 
       for (const modelId of mergedModelIds) {
-        // Resolve kind: prefer custom/live metadata, then static, then ID heuristics.
+        // Resolve kind: custom first, then a live kind the resolver actually declared,
+        // then the static registry, then ID heuristics. A live resolver that returns bare
+        // ids carries modelKind()'s "llm" default, which would otherwise relabel a
+        // registry entry that this provider serves on another surface — opencode's
+        // `jev-1.13-free` is `systemone`, and promoting it to llm hands the chat
+        // translator a decision endpoint.
         const customKind = customModelKindById.get(modelId);
         const liveKind = liveModelKindById.get(modelId);
-        const kind = customKind || liveKind || staticModelKindById.get(modelId) || inferKindFromUnknownModelId(modelId);
+        const declaredLiveKind = liveKind && liveKind !== LLM_KIND ? liveKind : null;
+        const kind = customKind || declaredLiveKind || staticModelKindById.get(modelId) || liveKind || inferKindFromUnknownModelId(modelId);
         // imageToText custom models stay in the LLM list (vision-capable chat models)
         const allowAsLlm = kind === "imageToText" && kindFilter.includes(LLM_KIND);
         if (!kindFilter.includes(kind) && !allowAsLlm) continue;

@@ -317,8 +317,11 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   if (rtkStats?.hits?.length) xf.push(`RTK:${rtkStats.hits.length}`);
 
-  // REA allow: strip built-in security-policy paragraphs, then inject REA guidance for every client.
-  if (reaAllowEnabled && applyReaAllow(translatedBody, finalFormat)) {
+  // REA allow: strip built-in security-policy paragraphs, then inject REA guidance.
+  // Gated like every other saver so the per-request opt-out header actually opts out —
+  // this one rewrites a system prompt and drops its security policy, which is the last
+  // thing a client that asked to be left alone should get.
+  if (tokenSaverEnabled && reaAllowEnabled && applyReaAllow(translatedBody, finalFormat)) {
     xf.push("REAALLOW");
   }
 
