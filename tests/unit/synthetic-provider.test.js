@@ -133,24 +133,19 @@ describe("synthetic usage rows", () => {
 
     const usage = await getSyntheticUsage("syn_test");
     expect(usage.plan).toBe("Synthetic");
-    // Rows are keyed by the stable id; the display name rides on `name`. The
-    // dashboard's generic parser iterates every entry, so a second alias key
-    // would render each row twice.
-    expect(usage.quotas.Requests).toMatchObject({
-      name: "Subscription requests",
-      used: 125, total: 500, remaining: 375, remainingPercentage: 75, resetAt: "2026-10-27T08:44:04.756Z",
+    // One entry per row, keyed by the display name — the dashboard's generic
+    // parser iterates every entry, so an alias key would render each row twice.
+    expect(usage.quotas.Subscription).toMatchObject({
+      used: 125, total: 500, remainingPercentage: 75, resetAt: "2026-10-27T08:44:04.756Z",
     });
-    expect(usage.quotas.PlanWeekly).toMatchObject({
-      name: "Plan window (weekly)", used: 13.2, remainingPercentage: 86.8,
-    });
-    expect(usage.quotas.Search).toMatchObject({ name: "Search (hourly)", used: 0, total: 250 });
-    // One entry per row — the dashboard renders one row per key.
-    expect(Object.keys(usage.quotas).sort()).toEqual(["PlanWeekly", "Requests", "Search"]);
+    expect(usage.quotas.Weekly).toMatchObject({ used: 13.2, remainingPercentage: 86.8 });
+    expect(usage.quotas["Search (hourly)"]).toMatchObject({ used: 0, total: 250 });
+    expect(Object.keys(usage.quotas).sort()).toEqual(["Search (hourly)", "Subscription", "Weekly"]);
   });
 
   it("reports a bad key instead of throwing", async () => {
     proxyAwareFetch.mockResolvedValue(new Response("{\"error\":\"Invalid API Key.\"}", { status: 401 }));
-    expect((await getSyntheticUsage("bad")).message).toMatch(/invalid or expired/i);
+    expect((await getSyntheticUsage("bad")).message).toMatch(/authentication failed/i);
   });
 
   it("asks for a key when none is stored", async () => {

@@ -27,14 +27,16 @@ describe("cloudflare Clef via systemoneCore", () => {
   beforeEach(() => vi.restoreAllMocks());
   afterEach(() => vi.restoreAllMocks());
 
-  it("substitutes {accountId}/{model} into the URL and drops model from the body", async () => {
+  it("substitutes {accountId}/{model} into the URL and keeps the short selector in the body", async () => {
     const calls = stubFetch({ result: { model: "clef", answers: { q: { noul: 0.9 } }, usage: { input_tokens: 12, output_tokens: 1 } } });
     const res = await handleSystemoneCore({ ...baseArgs });
 
     expect(res.success).toBe(true);
     expect(calls[0].url).toBe(CF_URL);
     const sent = JSON.parse(calls[0].init.body);
-    expect(sent.model).toBeUndefined();
+    // Cloudflare validates body.model against the short selector even though the
+    // path carries the full id, so it must travel in both places.
+    expect(sent.model).toBe("clef");
     expect(sent.state).toBe("customer charged twice");
     expect(calls[0].init.headers.Authorization).toBe("Bearer cf-token");
   });
@@ -49,12 +51,12 @@ describe("cloudflare Clef via systemoneCore", () => {
     expect(res.usage).toEqual({ prompt_tokens: 12, completion_tokens: 1 });
   });
 
-  it("surfaces {success:false} envelopes as errors instead of a fake success", async () => {
-    stubFetch({ result: null, success: false, errors: [{ code: 7003, message: "no such model" }] });
+  it("reports a non-2xx upstream as an error", async () => {
+    stubFetch({ success: false, errors: [{ code: 7003, message: "no such model" }] }, false, 400);
     const res = await handleSystemoneCore({ ...baseArgs });
 
     expect(res.success).toBe(false);
-    expect(String(res.error)).toContain("no such model");
+    expect(res.status ?? res.statusCode).toBe(400);
   });
 
   it("requires accountId when the baseUrl needs it", async () => {

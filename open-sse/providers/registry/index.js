@@ -149,9 +149,12 @@ import p152 from "./runcrate.js";
 import p153 from "./nace.js";
 import p154 from "./sensenova-intl.js";
 import p155 from "./synthetic.js";
-import p156 from "./fci-ai.js";
-import p157 from "./charm.js";
-import p158 from "./fci-neo.js";
+import p156 from "./opendesign-go.js";
+import p157 from "./deeprelay.js";
+import p158 from "./qwencloud.js";
+import p159 from "./fci-ai.js";
+import p160 from "./charm.js";
+import p161 from "./fci-neo.js";
 export default [
   p0,
   p1,
@@ -304,4 +307,7 @@ export default [
   p156,
   p157,
   p158,
+  p159,
+  p160,
+  p161,
 ];

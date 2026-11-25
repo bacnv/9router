@@ -84,6 +84,11 @@ export async function parseUpstreamError(response, executor = null, provider = n
       }
       if (hitLimit) reader.cancel().catch(() => {}); // fire-and-forget: cancel() may never settle
       else bodyText += decoder.decode();
+    } else {
+      // Response objects that are not real streams (proxyFetch's DNS-bypass shape, test
+      // doubles) expose only text(). Reading them once is the same contract the plain
+      // path has, and a re-read after that returns "" — callers must not read twice.
+      bodyText = await response.text();
     }
   } catch {
     bodyText = "";
