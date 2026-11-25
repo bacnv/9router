@@ -257,3 +257,47 @@ export function buildResetQuotaStateUpdate(connection) {
     backoffLevel: 0,
   };
 }
+
+/**
+ * Which of a connection's active model locks the provider's own usage read now
+ * contradicts. A lock is written from a 429; the quota it was written for can come
+ * back early (a reset grant, a window rolling over, a shared pool freeing up), and
+ * nothing on the read path noticed — the account stays skipped until the stale
+ * expiry, and with every account locked no request ever succeeds, so no success
+ * ever clears it. That is a deadlock, not just a slow recovery.
+ *
+ * `quotas` is the provider's usage payload (`{ "weekly fable (7d)": { remainingPercentage } }`).
+ * @param {object} connection - connection with flattened modelLock_* fields
+ * @param {object|null} quotas - provider usage buckets, keyed by display name
+ * @returns {string[]} lock keys that are safe to clear
+ */
+export function locksContradictedByUsage(connection, quotas) {
+  if (!connection || !quotas || typeof quotas !== "object") return [];
+  const now = Date.now();
+  const cleared = [];
+
+  for (const [key, expiry] of Object.entries(connection)) {
+    if (!key.startsWith(MODEL_LOCK_PREFIX) || !expiry) continue;
+    if (new Date(expiry).getTime() <= now) continue; // already expired; lazy cleanup handles it
+
+    const model = key.slice(MODEL_LOCK_PREFIX.length);
+    if (model === "__all") continue; // account-wide (e.g. GitHub monthly) — usage can't refute it
+
+    // The bucket that explains a lock on this model: its scoped weekly window, else the
+    // account-wide ones. A model-scoped bucket exists only when the plan has one.
+    const family = String(model).replace(/^claude-/, "").replace(/[-.].*$/, "").toLowerCase();
+    const candidates = [
+      `weekly ${family} (7d)`,
+      "weekly (7d)",
+      "session (5h)",
+    ].filter((k) => quotas[k]);
+
+    // Contradicted when every bucket we can see says there is room left. If the only
+    // bucket we found is still at 0%, the lock is telling the truth and stays.
+    if (candidates.length === 0) continue;
+    const anyRoom = candidates.some((k) => Number(quotas[k]?.remainingPercentage) > 0);
+    if (anyRoom) cleared.push(key);
+  }
+
+  return cleared;
+}

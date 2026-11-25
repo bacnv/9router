@@ -2,6 +2,7 @@
 import "open-sse/index.js";
 
 import { getProviderConnectionById, updateProviderConnection } from "@/lib/localDb";
+import { locksContradictedByUsage } from "open-sse/services/accountFallback.js";
 import { getUsageForProvider } from "open-sse/services/usage.js";
 import { isUnrecoverableRefreshError } from "open-sse/services/tokenRefresh.js";
 import { getExecutor } from "open-sse/executors/index.js";
@@ -195,6 +196,23 @@ export async function GET(request, { params }) {
       } catch (retryError) {
         console.warn(`[Usage] ${connection.provider}: force refresh failed: ${retryError.message}`);
       }
+    }
+
+    // Reconcile the locks this read just refuted. A connection skipped by account
+    // selection never sends a request, so a stale modelLock_* has no other way to
+    // clear itself: refreshing the quota panel is the user's only lever, and it must
+    // actually release the account instead of only repainting the numbers.
+    const staleLocks = locksContradictedByUsage(connection, usage?.quotas);
+    if (staleLocks.length > 0) {
+      const cleared = Object.fromEntries(staleLocks.map((k) => [k, null]));
+      const stillLocked = Object.keys(connection)
+        .filter((k) => k.startsWith("modelLock_") && connection[k] && !staleLocks.includes(k))
+        .some((k) => new Date(connection[k]).getTime() > Date.now());
+      await updateProviderConnection(connectionId, stillLocked
+        ? cleared
+        : { ...cleared, testStatus: "active", lastError: null, errorCode: null, lastErrorAt: null, backoffLevel: 0 });
+      console.warn(`[Usage] ${connection.provider}: released ${staleLocks.join(",")} — quota is back`);
+      connection = await getProviderConnectionById(connectionId) || connection;
     }
 
     return Response.json(usage);
